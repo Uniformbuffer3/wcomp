@@ -1,209 +1,203 @@
+use crate::event_processing::WCompMessage;
+use crate::geometry_manager::{SurfaceKind, SurfaceRequest, WCompRequest};
 use crate::wcomp::WComp;
 use ews::Buffer;
 use screen_task::ScreenTask;
-use crate::geometry_manager::{GeometryEvent,SurfaceEvent};
-use crate::event_processing::WCompMessage;
 
 impl WComp {
-    fn process_new_surface(&mut self, surface: &ews::WlSurface)->bool{
-        let role = ews::get_role(surface);
-        let result = ews::with_states(&surface,|surface_data|{
-            let mut redraw = false;
-            if let Some(true) = ews::surface_id(&surface_data).map(|id|self.geometry_manager.surface_ref(id).is_some()) {return redraw;}
-            if let Some(ews::BufferAssignment::NewBuffer{buffer,delta}) = &surface_data.cached_state.current::<ews::SurfaceAttributes>().buffer {
-                let id = ews::surface_id(&surface_data).unwrap();
+    pub(crate) fn process_wayland_requests(
+        &mut self,
+        requests: impl Iterator<Item = ews::WaylandRequest>,
+    ) -> impl Iterator<Item = WCompRequest> {
+        requests.flat_map(|request|{
+            match request {
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::NewToplevel{surface}}=>{
+                    let size = self.geometry_manager.get_surface_optimal_size();
+                    surface.with_pending_state(|state|{
+                        state.size = Some((size.width as i32,size.height as i32).into());
+                    }).unwrap();
+                    surface.send_configure();
 
-                let size = self.geometry_manager.get_surface_optimal_size();
-                let position = self.geometry_manager.get_surface_optimal_position(&size);
-                let geometry = pal::Rectangle::from((pal::Position2D::from(position),size));
-
-                let inner_geometry = surface_data.cached_state.current::<ews::SurfaceCachedState>().geometry.map(|geometry|{
-                    println!("Geometry: {:#?}",geometry);
-                    let size = pal::Size2D::from((geometry.size.w as u32,geometry.size.h as u32));
-                    let position = pal::Position2D::from((geometry.loc.x as i32, geometry.loc.y as i32));
-                    pal::Rectangle::from((position,size))
-                }).unwrap_or(geometry);
-
-                let serial = ews::SERIAL_COUNTER.next_serial().into();
-                let handle = surface.clone();
-
-                match ews::buffer_type(&buffer) {
-                    Some(ews::BufferType::Shm)=>{
-                        ews::with_buffer_contents(&buffer,|data,info|{
-                            let has_been_added = match role {
-                                Some("xdg_toplevel")=>{
-                                    let event = GeometryEvent::Surface{serial,event: SurfaceEvent::Added{id,handle,inner_geometry,geometry}};
-                                    self.messages.borrow_mut().push(WCompMessage::from(event));
-                                    true
-                                }
-                                _=>false
-                            };
-                            if has_been_added {
-                                let source = crate::utils::shm_convert_format(data,info);
-                                self.wgpu_engine.task_handle_cast_mut(&self.screen_task, |screen_task: &mut ScreenTask|{
-                                    screen_task.create_surface(id, "", source, position.into(), [info.width as u32,info.height as u32]);
-                                });
-                                redraw = true;
-                            }
-
-                        }).unwrap();
-                    }
-                    Some(ews::BufferType::Dma)=>{
-                        buffer.as_ref().user_data().get::<ews::Dmabuf>().map(|dmabuf|{
-                            let has_been_added = match role {
-                                Some("xdg_toplevel")=>{
-                                    let event = GeometryEvent::Surface{serial,event: SurfaceEvent::Added{id,handle,inner_geometry,geometry}};
-                                    self.messages.borrow_mut().push(WCompMessage::from(event));
-                                    true
-                                }
-                                _=>false
-                            };
-                            if has_been_added {
-                                let size = pal::Size2D::from([dmabuf.width() as u32,dmabuf.height() as u32]);
-                                let fd = dmabuf.handles().next().unwrap();
-                                let plane_offset = dmabuf.offsets().next().unwrap() as u64;
-                                let plane_stride = dmabuf.strides().next().unwrap() as u32;
-                                let modifier = dmabuf.format().modifier;
-                                let info = screen_task::DmabufInfo {
-                                    fd,
-                                    size: size.into(),
-                                    modifier,
-                                    plane_offset,
-                                    plane_stride
-                                };
-                                let source = screen_task::SurfaceSource::Dmabuf{info};
-                                self.wgpu_engine.task_handle_cast_mut(&self.screen_task, |screen_task: &mut ScreenTask|{
-                                    screen_task.create_surface(id, "", source, position.into(), size.into());
-                                });
-                                redraw = true;
-                            }
-                        });
-                    }
-                    _=>()
+                    surface.get_surface().map(|raw_surface|{
+                        ews::with_states(&raw_surface,|surface_data|{
+                            let id = ews::surface_id(&surface_data).expect(&format!("{:#?} not found",surface));
+                            let kind = SurfaceKind::from(surface.clone());
+                            WCompRequest::Surface{request: SurfaceRequest::Added{id,kind}}
+                        }).ok()
+                    }).flatten().into_iter().collect::<Vec<_>>()
                 }
-            }
-            else{println!("No buffer attached");}
-            redraw
-        });
-        match result {
-            Ok(redraw)=>redraw,
-            Err(err)=>{println!("{:#?}",err);false}
-        }
-    }
-    pub(crate) fn process_wayland_request(&mut self, message: ews::WaylandRequest)->bool{
-        let mut redraw = false;
-        match message {
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::NewToplevel{surface}}=>{
-                let size = self.geometry_manager.get_surface_optimal_size();
-                surface.with_pending_state(|state|{
-                    state.size = Some((size.width as i32,size.height as i32).into());
-                    println!("Size: {:#?}",state.size);
-                }).unwrap();
-                surface.send_configure();
-            }
 
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::AckConfigure{surface,configure}}=>{
-                println!("New Surface!");
-
-            },
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Move{surface,seat,serial}}=>{
-                log::info!(target: "WComp","Moving surface: {:#?}",surface);
-                if let Some(seat_id) = ews::seat_id(&seat){
-                    if let Some(cursor) = self.ews.get_cursor(seat_id){
-                        cursor.grab_start_data().map(|mut start_data|{
-                            if let Some((surface,position)) = start_data.focus.as_mut() {
-                                let id = ews::with_states(&surface,|surface_data|ews::surface_id(&surface_data)).ok().flatten().unwrap();
-                                if let Some(surface) = self.geometry_manager.surface_ref(id) {
-                                    position.x = surface.geometry.position.x;
-                                    position.y = surface.geometry.position.y;
-                                }
-                                else{log::error!(target: "WComp","Moving surface: surface {:#?} not found",surface);};
-                            }
-
-                            let move_logic = crate::move_logic::MoveLogic::new(start_data,self.messages.clone());
-                            cursor.set_grab(move_logic, serial);
-                        });
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::AckConfigure{surface,configure}}=>{
+                    /*
+                    match configure {
+                        ews::Configure::Toplevel(toplevel)=>{println!("Ack: {}",u32::from(toplevel.serial));}
+                        ews::Configure::Popup(popup)=>{println!("Ack: {}",u32::from(popup.serial));}
                     }
-                    else{log::error!(target: "WComp","Moving surface: cursor {:#?} not found",seat_id);};
-                }else{log::error!(target: "WComp","Moving surface: cannot get id from cursor");};
-            }
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Resize{surface,seat,serial,edges}}=>{
-                println!("Resize event detected!");
-            }
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Maximize{surface}}=>{
-                println!("Maximize event detected!");
-            }
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::UnMaximize{surface}}=>{
-                println!("Unmaximize event detected!");
-            }
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Fullscreen{surface,output}}=>{
-                println!("Fullscreen event detected!");
-            }
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::UnFullscreen{surface}}=>{
-                println!("Unfullscreen event detected!");
-            }
-            ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Minimize{surface}}=>{
-                println!("Minimize event detected!");
-            }
-            ews::WaylandRequest::Commit {surface}=>{
-                log::info!(target: "WComp","Committing surface: {:#?}",surface);
-                redraw |= self.process_new_surface(&surface);
-                let result = ews::with_states(&surface,|surface_data|{
-                    let attributes = surface_data.cached_state.current::<ews::SurfaceAttributes>();
-                    if let Some(ews::BufferAssignment::NewBuffer{buffer,delta}) = &attributes.buffer {
-                        println!("Buffer: {:#?}",buffer);
-                        let position_offset = surface_data.cached_state.current::<ews::SurfaceCachedState>().geometry.map(|geometry|{
-                            let point: (i32,i32) = geometry.loc.into();
-                            pal::Offset2D::from(point)
-                        }).unwrap_or(pal::Offset2D::from((0,0)));
+                    */
+                    ews::with_states(&surface, |surface_data| {
+                        let id = ews::surface_id(&surface_data).expect(&format!("{:#?} not found",surface));
+                        let surface_state = surface_data.cached_state.current::<ews::SurfaceCachedState>();
+                        let geometry = surface_state.geometry.map(|geometry|{
+                            let position = pal::Position2D::from((geometry.loc.x as i32,geometry.loc.y as i32));
+                            let size = pal::Size2D::from((geometry.size.w as u32,geometry.size.h as u32));
+                            pal::Rectangle::from((position,size))
+                        });
+                        let min_size = pal::Size2D::from((surface_state.min_size.w as u32,surface_state.min_size.h as u32));
+                        let max_size = pal::Size2D::from((surface_state.max_size.w as u32,surface_state.max_size.h as u32));
+                        vec![
+                            WCompRequest::Surface{request: SurfaceRequest::Configuration {
+                                id,
+                                geometry,
+                                min_size,
+                                max_size,
+                            }},
 
-                        let size_offset = pal::Size2D{width: position_offset.x as u32,height: position_offset.y as u32};
-                        let buffer_type = ews::buffer_type(&buffer);
-                        match buffer_type {
-                            Some(ews::BufferType::Shm)=>{
-                                ews::with_buffer_contents(&buffer,|data,info|{
-                                    log::info!(target: "WComp","Committing surface {:#?}",surface);
-                                    let id = ews::surface_id(&surface_data).unwrap();
-                                    //let source = crate::utils::shm_convert_format(data,info);
-                                    self.wgpu_engine.task_handle_cast_mut(&self.screen_task, |screen_task: &mut ScreenTask|{
-                                        screen_task.update_data(id, data.to_vec());
-                                    });
-                                }).unwrap();
-                                redraw = true;
+                        ]
+                    }).ok().into_iter().flatten().collect::<Vec<_>>()
+
+                    //Vec::new()
+                },
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Move{surface,seat,serial}}=>{
+                    if let Some(seat_id) = ews::seat_id(&seat){
+                        if let Some(cursor) = self.ews.get_cursor(seat_id){
+                            cursor.grab_start_data().map(|mut start_data|{
+                                if let Some((surface,position)) = start_data.focus.as_mut() {
+                                    let id = ews::with_states(&surface,|surface_data|ews::surface_id(&surface_data)).ok().flatten().unwrap();
+                                    if let Some(surface) = self.geometry_manager.surface_ref(id) {
+                                        position.x = surface.position.x;
+                                        position.y = surface.position.y;
+                                    }
+                                    else{log::error!(target: "WComp","Moving surface: surface {:#?} not found",surface);};
+                                }
+
+                                let move_logic = crate::move_logic::MoveLogic::new(start_data,self.async_requests.clone());
+                                cursor.set_grab(move_logic, serial);
+                            });
+                        }
+                        else{log::error!(target: "WComp","Moving surface: cursor {:#?} not found",seat_id);};
+                    }else{log::error!(target: "WComp","Moving surface: cannot get id from cursor");};
+                    Vec::new()
+                }
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Resize{surface,seat,serial,edges}}=>{
+                    println!("Resize event detected!");
+                    if let Some(seat_id) = ews::seat_id(&seat){
+                        if let Some(cursor) = self.ews.get_cursor(seat_id){
+                            cursor.grab_start_data().map(|mut start_data|{
+                                if let Some((surface,position)) = start_data.focus.as_mut() {
+                                    let id = ews::with_states(&surface,|surface_data|ews::surface_id(&surface_data)).ok().flatten().unwrap();
+                                    if let Some(surface) = self.geometry_manager.surface_ref(id) {
+                                        position.x = surface.position.x;
+                                        position.y = surface.position.y;
+                                        surface.inner_geometry().map(|geometry|{
+                                            let move_logic = crate::resize_logic::ResizeLogic::new(start_data,self.async_requests.clone(),id,serial.into(),geometry.clone(),edges);
+                                            cursor.set_grab(move_logic, serial);
+                                        });
+                                    }
+                                    else{log::error!(target: "WComp","Resizing surface: surface {:#?} not found",surface);};
+                                }
+                            });
+                        }
+                        else{log::error!(target: "WComp","Resizing surface: cursor {:#?} not found",seat_id);};
+                    }else{log::error!(target: "WComp","Resizing surface: cannot get id from cursor");};
+                    Vec::new()
+                }
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Maximize{surface}}=>{
+                    Vec::new()
+                }
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::UnMaximize{surface}}=>{
+                    Vec::new()
+                }
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Fullscreen{surface,output}}=>{
+                    Vec::new()
+                }
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::UnFullscreen{surface}}=>{
+                    Vec::new()
+                }
+                ews::WaylandRequest::XdgRequest{request: ews::XdgRequest::Minimize{surface}}=>{
+                    println!("Minimize event detected!");
+                    Vec::new()
+                }
+                ews::WaylandRequest::Commit {surface}=>{
+                    ews::with_states(&surface,|surface_data|{
+                        let id = ews::surface_id(&surface_data).expect(&format!("{:#?} not found",surface));
+                        let mut events = Vec::new();
+                        let mut attributes = surface_data.cached_state.current::<ews::SurfaceAttributes>();
+                        match attributes.buffer.as_ref() {
+                            Some(ews::BufferAssignment::NewBuffer{buffer,delta: _})=>{
+                                match ews::buffer_type(&buffer) {
+                                    Some(ews::BufferType::Shm)=>{
+                                        ews::with_buffer_contents(&buffer,|_data,info|{
+                                            let size = pal::Size2D::from((info.width as u32,info.height as u32));
+                                            let (position,_depth) = self.geometry_manager.get_surface_optimal_position(&size);
+                                            let geometry = pal::Rectangle::from((position,size.clone()));
+                                            let inner_geometry = surface_data.cached_state.current::<ews::SurfaceCachedState>().geometry.map(|geometry|{
+                                                let size = pal::Size2D::from((geometry.size.w as u32,geometry.size.h as u32));
+                                                let position = pal::Position2D::from((geometry.loc.x as i32, geometry.loc.y as i32));
+                                                pal::Rectangle::from((position,size))
+                                            }).unwrap_or(geometry);
+
+                                            let handle = buffer.clone();
+                                            events.push(WCompRequest::Surface{request: SurfaceRequest::BufferAttached{id,handle,inner_geometry,size}});
+                                        }).unwrap();
+                                    }
+                                    Some(ews::BufferType::Dma)=>{
+                                        buffer.as_ref().user_data().get::<ews::Dmabuf>().map(|dmabuf|{
+                                            let size = pal::Size2D::from((dmabuf.width() as u32,dmabuf.height() as u32));
+                                            let (position,_depth) = self.geometry_manager.get_surface_optimal_position(&size);
+                                            let geometry = pal::Rectangle::from((position,size.clone()));
+                                            let inner_geometry = surface_data.cached_state.current::<ews::SurfaceCachedState>().geometry.map(|geometry|{
+                                                let size = pal::Size2D::from((geometry.size.w as u32,geometry.size.h as u32));
+                                                let position = pal::Position2D::from((geometry.loc.x as i32, geometry.loc.y as i32));
+                                                pal::Rectangle::from((position,size))
+                                            }).unwrap_or(geometry);
+                                            let handle = buffer.clone();
+                                            events.push(WCompRequest::Surface{request: SurfaceRequest::BufferAttached{id,handle,inner_geometry,size}});
+                                        });
+                                    }
+                                    _=>unreachable!()
+                                }
                             }
-                            Some(ews::BufferType::Dma)=>{}
-                            _=>()
+                            Some(ews::BufferAssignment::Removed)=>{
+                                events.push(WCompRequest::Surface{request: SurfaceRequest::BufferDetached{id}});
+                            }
+                            None=>()
+                        }
+
+                        attributes.buffer = None;
+                        events.push(WCompRequest::Surface{request: SurfaceRequest::Committed{id}});
+                        events
+                    }).unwrap_or(Vec::new())
+                },
+                ews::WaylandRequest::Seat{seat,request: ews::SeatRequest::CursorImage(image_status)}=>{
+                    match image_status {
+                        ews::CursorImageStatus::Image(surface)=>{
+                            //println!("Cursor surface: {:#?}",surface);
+                        }
+                        ews::CursorImageStatus::Default=>{
+
+                        }
+                        ews::CursorImageStatus::Hidden=>{
+
                         }
                     }
-                });
-                redraw=true;
-            },
-            ews::WaylandRequest::Seat{seat,request: ews::SeatRequest::CursorImage(image_status)}=>{
-                match image_status {
-                    ews::CursorImageStatus::Image(surface)=>{
-                        println!("Cursor surface: {:#?}",surface);
-                    }
-                    ews::CursorImageStatus::Default=>{
-
-                    }
-                    ews::CursorImageStatus::Hidden=>{
-
-                    }
+                    //println!("Seat request: {:#?}",request);
+                    Vec::new()
                 }
-                //println!("Seat request: {:#?}",request);
-            }
-            ews::WaylandRequest::Dmabuf{buffer}=>{
-                println!("Dmabuf request");
-            }
-            ews::WaylandRequest::Dnd{dnd}=>{
-                println!("Dnd request");
-            }
+                ews::WaylandRequest::Dmabuf{buffer}=>{
+                    Vec::new()
+                }
+                ews::WaylandRequest::Dnd{dnd}=>{
+                    Vec::new()
+                }
+                ews::WaylandRequest::SurfaceRemoved{id}=>{
+                    vec![WCompRequest::Surface{request: SurfaceRequest::Removed{id}}]
+                }
+                other_request=>{
+                    //println!("Other request: {:#?}",other_request);
+                    Vec::new()
+                }
 
-            other_request=>{
-                //println!("Other request: {:#?}",other_request);
             }
-
-        }
-        redraw
+        }).collect::<Vec<_>>().into_iter()
     }
 }

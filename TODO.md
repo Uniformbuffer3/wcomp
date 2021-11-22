@@ -1,3 +1,2 @@
-- Mappare gli eventi di enter e left del cursore
-- Fixare il problem dell'offset interno delle superfici
-
+- Implementare il cursore
+- Implementare la meccanica di assegnazione dei buffer durante i commit

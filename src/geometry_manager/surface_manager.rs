@@ -1,7 +1,122 @@
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 
-bitflags::bitflags!{
+#[derive(Debug, Clone)]
+pub enum SurfaceRequest {
+    Added {
+        id: usize,
+        kind: SurfaceKind,
+    },
+    Removed {
+        id: usize,
+    },
+    Moved {
+        id: usize,
+        position: pal::Position2D<i32>,
+        depth: u32,
+    },
+    InteractiveResizeStart {
+        id: usize,
+        serial: u32,
+        edge: ews::ResizeEdge
+    },
+    InteractiveResize {
+        id: usize,
+        serial: u32,
+        inner_size: pal::Size2D<u32>
+    },
+    InteractiveResizeStop {
+        id: usize,
+        serial: u32
+    },
+    Resized {
+        id: usize,
+        size: pal::Size2D<u32>,
+    },
+    Configuration {
+        id: usize,
+        geometry: Option<pal::Rectangle<i32, u32>>,
+        min_size: pal::Size2D<u32>,
+        max_size: pal::Size2D<u32>,
+    },
+    BufferAttached {
+        id: usize,
+        handle: ews::WlBuffer,
+        inner_geometry: pal::Rectangle<i32, u32>,
+        size: pal::Size2D<u32>,
+    },
+    BufferDetached {
+        id: usize,
+    },
+    Committed {
+        id: usize,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum SurfaceEvent {
+    Added {
+        id: usize,
+        kind: SurfaceKind,
+    },
+    Removed {
+        id: usize,
+    },
+    Moved {
+        id: usize,
+        position: pal::Position2D<i32>,
+        depth: u32,
+    },
+    InteractiveResizeStarted {
+        id: usize,
+        serial: u32,
+        edge: ews::ResizeEdge
+    },
+    InteractiveResizeStopped {
+        id: usize,
+        serial: u32
+    },
+    Resized {
+        id: usize,
+        size: pal::Size2D<u32>,
+    },
+    Configuration {
+        id: usize,
+        size: pal::Size2D<u32>,
+    },
+    MinSize {
+        id: usize,
+        size: pal::Size2D<u32>,
+    },
+    MaxSize {
+        id: usize,
+        size: pal::Size2D<u32>,
+    },
+    Geometry {
+        id: usize,
+        geometry: pal::Rectangle<i32,u32>,
+    },
+    BufferAttached {
+        id: usize,
+        handle: ews::WlBuffer,
+        inner_geometry: pal::Rectangle<i32, u32>,
+        geometry: pal::Rectangle<i32, u32>,
+    },
+    BufferReplaced {
+        id: usize,
+        handle: ews::WlBuffer,
+        inner_geometry: pal::Rectangle<i32, u32>,
+        geometry: pal::Rectangle<i32, u32>,
+    },
+    BufferDetached {
+        id: usize,
+    },
+    Committed {
+        id: usize,
+    },
+}
+/*
+bitflags::bitflags! {
     pub struct SurfaceState: u32 {
         const MAXIMIZED     = (1 << 0);
         const FULLSCREEN    = (1 << 1);
@@ -11,282 +126,628 @@ bitflags::bitflags!{
         const TILED_BOTTOM   = (1 << 5);
     }
 }
-
-#[derive(Debug,Clone)]
-pub enum SurfaceEvent<S: Clone> {
-    Moved{id: usize,position: pal::Position2D<i32>,depth: u32},
-    Resized{id: usize,size: pal::Size2D<u32>},
-    Removed(Surface<S>),
-    Added{
-        id: usize,
-        handle: S,
-        inner_geometry: pal::Rectangle<i32,u32>,
-        geometry: pal::Rectangle<i32,u32>,
-    }
+*/
+#[derive(Debug, Clone)]
+pub struct AlteredState {
+    original: pal::Rectangle<i32,u32>,
+    minimized: bool,
+    maximized: bool,
+    fullscreen: bool,
+    resizing: Option<(u32,ews::ResizeEdge)>, //Serial
+    moving: Option<u32>, //Serial
 }
-
-
-#[derive(Debug,Clone)]
-pub struct Surface<S: Clone> {
-    pub id: usize,
-    pub handle: S,
-    pub inner_geometry: pal::Rectangle<i32,u32>,
-    pub geometry: pal::Rectangle<i32,u32>,
-    pub depth: u32,
-    pub state: SurfaceState
-}
-impl<S: Clone> Surface<S> {
-    pub fn id(&self)->usize {self.id}
-    pub fn handle(&self)->&S {&self.handle}
-    pub fn geometry(&self)->&pal::Rectangle<i32,u32> {&self.geometry}
-    pub fn inner_geometry(&self)->&pal::Rectangle<i32,u32> {&self.inner_geometry}
-    pub fn depth(&self)->u32 {self.depth}
-    pub fn state(&self)->SurfaceState {self.state}
-
-    pub fn update_position(&mut self,position: pal::Position2D<i32>){
-        self.geometry.position = position;
-        self.inner_geometry.position.x = std::cmp::max(self.inner_geometry.position.x,self.geometry.position.x);
-        self.inner_geometry.position.y = std::cmp::max(self.inner_geometry.position.y,self.geometry.position.y);
+impl AlteredState {
+    pub fn new(original: pal::Rectangle<i32,u32>)->Self {
+        let minimized = false;
+        let maximized = false;
+        let fullscreen = false;
+        let resizing = None;
+        let moving = None;
+        Self {original,minimized,maximized,fullscreen,resizing,moving}
     }
-    pub fn update_size(&mut self,size: pal::Size2D<u32>){
-        self.geometry.size = size;
-        self.inner_geometry.size.width = std::cmp::min(self.inner_geometry.size.width,self.geometry.size.width);
-        self.inner_geometry.size.height = std::cmp::min(self.inner_geometry.size.height,self.geometry.size.height);
+
+    pub fn is_minimized(&self)->bool {self.minimized}
+    pub fn is_maximized(&self)->bool {self.maximized}
+    pub fn is_fullscreen(&self)->bool {self.fullscreen}
+    pub fn is_resizing(&self)->bool {self.resizing.is_some()}
+    pub fn is_resizing_width(&self, serial: u32)->bool {self.resizing.map(|(serial,_)|serial) == Some(serial)}
+    pub fn is_moving(&self)->bool {self.moving.is_some()}
+    pub fn is_moving_width(&self, serial: u32)->bool {self.moving == Some(serial)}
+    pub fn is_empty(&self)->bool {
+        !self.is_minimized() && !self.is_maximized() && !self.is_fullscreen() && !self.is_resizing() && !self.is_moving()
     }
-    pub fn update_geometry(&mut self,geometry: pal::Rectangle<i32,u32>){
-        self.update_position(geometry.position);
-        self.update_size(geometry.size);
-    }
-    pub fn resize(&mut self, size: pal::Size2D<u32>, edge: ews::ResizeEdge)->impl Iterator<Item=SurfaceEvent<S>>{
-        /*
-        match edge {
-            ews::ResizeEdge::Top=>{
-                self.size.
-            }
-            _=>()
+    pub fn start_interactive_resize(&mut self, serial: u32, edge: ews::ResizeEdge)->bool{
+        if self.resizing.is_some() | self.moving.is_some() | self.maximized | self.minimized {false}
+        else{
+            self.resizing = Some((serial,edge));
+            true
         }
-        */
-        Vec::new().into_iter()
+    }
+    pub fn stop_interactive_resize(&mut self, serial: u32)->bool{
+        if Some(serial) == self.resizing.map(|(serial,_)|serial) {
+            self.resizing = None;
+            true
+        }
+        else{false}
+    }
+    pub fn check_resize(&self, serial: u32)->bool{
+        match &self.resizing {
+            Some((current_serial,_))=>current_serial == &serial,
+            None=>true
+        }
     }
 }
-impl<S: Clone> Ord for Surface<S> {
+
+#[derive(Debug, Clone, Default)]
+pub struct SurfaceState {
+    altered_state: Option<AlteredState>,
+}
+impl SurfaceState {
+    pub fn check_resize(&self, serial: u32)->bool{
+        self.altered_state.as_ref().map(|altered_state|altered_state.check_resize(serial)) != Some(false)
+    }
+
+    pub fn start_interactive_resize(&mut self, serial: u32, edge: ews::ResizeEdge, inner_geometry: pal::Rectangle<i32,u32>)->bool{
+        println!("Current altered state: {:#?}",self.altered_state.clone());
+        if self.altered_state.is_none() {self.altered_state = Some(AlteredState::new(inner_geometry));}
+        let result = self.altered_state.as_mut().map(|altered_state|{
+            altered_state.start_interactive_resize(serial,edge)
+        });
+        result == Some(true)
+    }
+    pub fn stop_interactive_resize(&mut self, serial: u32)->bool{
+        let result = self.altered_state.as_mut().map(|altered_state|altered_state.stop_interactive_resize(serial));
+        if self.is_empty() {self.altered_state = None;}
+        result == Some(true)
+    }
+
+    pub fn is_minimized(&self)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_minimized()) == Some(true)}
+    pub fn is_maximized(&self)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_maximized()) == Some(true)}
+    pub fn is_fullscreen(&self)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_fullscreen()) == Some(true)}
+    pub fn is_resizing(&self)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_resizing()) == Some(true)}
+    pub fn is_resizing_width(&self, serial: u32)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_resizing_width(serial)) == Some(true)}
+    pub fn is_moving(&self)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_moving()) == Some(true)}
+    pub fn is_moving_width(&self, serial: u32)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_moving_width(serial)) == Some(true)}
+    pub fn is_empty(&self)->bool {self.altered_state.as_ref().map(|altered_state|altered_state.is_empty()) == Some(true)}
+}
+
+#[derive(Debug, Clone)]
+pub enum SurfaceKind {
+    Toplevel {
+        handle: ews::ToplevelSurface,
+        state: SurfaceState,
+    },
+    Popup {
+        handle: ews::PopupSurface,
+    },
+}
+impl SurfaceKind {
+    pub fn handle(&self) -> Option<&ews::WlSurface> {
+        match self {
+            Self::Toplevel { handle, .. } => handle.get_surface(),
+            Self::Popup { handle } => handle.get_surface(),
+        }
+    }
+    pub fn check_resize(&self, serial: u32)->bool{
+        match self {
+            Self::Toplevel{handle,state}=>state.check_resize(serial),
+            Self::Popup{handle}=>true
+        }
+    }
+}
+impl From<ews::ToplevelSurface> for SurfaceKind {
+    fn from(handle: ews::ToplevelSurface) -> Self {
+        let state = SurfaceState::default();
+        Self::Toplevel { handle, state }
+    }
+}
+impl From<ews::PopupSurface> for SurfaceKind {
+    fn from(handle: ews::PopupSurface) -> Self {
+        Self::Popup { handle }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Buffer {
+    pub handle: ews::WlBuffer,
+    pub geometry: pal::Rectangle<i32, u32>,
+    //pub size: pal::Size2D<u32>
+}
+impl Buffer {
+    pub fn geometry(&self) -> &pal::Rectangle<i32, u32> {
+        &self.geometry
+    }
+    pub fn size(&self) -> pal::Size2D<u32> {
+        use ews::Buffer;
+        match ews::buffer_type(&self.handle) {
+            Some(ews::BufferType::Shm) => ews::with_buffer_contents(&self.handle, |data, info| {
+                pal::Size2D::from((info.width as u32, info.height as u32))
+            })
+            .unwrap(),
+            Some(ews::BufferType::Dma) => self
+                .handle
+                .as_ref()
+                .user_data()
+                .get::<ews::Dmabuf>()
+                .map(|dmabuf| pal::Size2D::from((dmabuf.width() as u32, dmabuf.height() as u32)))
+                .unwrap(),
+            _ => panic!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Surface {
+    pub id: usize,
+    pub kind: SurfaceKind,
+    pub buffer: Option<Buffer>,
+    pub min_size: pal::Size2D<u32>,
+    pub max_size: pal::Size2D<u32>,
+    pub position: pal::Position2D<i32>,
+    pub depth: u32,
+}
+impl Surface {
+    pub fn id(&self) -> usize {
+        self.id
+    }
+    pub fn position(&self) -> &pal::Position2D<i32> {
+        &self.position
+    }
+    pub fn depth(&self) -> u32 {
+        self.depth
+    }
+    pub fn size(&self) -> Option<pal::Size2D<u32>> {
+        self.buffer.as_ref().map(|buffer| buffer.size())
+    }
+    pub fn geometry(&self) -> Option<pal::Rectangle<i32, u32>> {
+        self.size().map(|size|{
+            pal::Rectangle::from((self.position().clone(),size))
+        })
+    }
+    pub fn inner_geometry(&self) -> Option<&pal::Rectangle<i32, u32>> {
+        self.buffer.as_ref().map(|buffer| buffer.geometry())
+    }
+    pub fn handle(&self) -> Option<&ews::WlSurface> {
+        self.kind.handle()
+    }
+    pub fn buffer(&self) -> Option<&ews::WlBuffer> {
+        self.buffer.as_ref().map(|buffer| &buffer.handle)
+    }
+
+    pub fn r#move(&mut self, position: pal::Position2D<i32>, depth: u32)->impl Iterator<Item=SurfaceEvent>+ Clone{
+        self.position = position.clone();
+        self.depth = depth;
+        std::iter::once(SurfaceEvent::Moved {id: self.id,position,depth})
+    }
+
+/*
+    pub fn resize(&mut self, size: pal::Size2D<u32>)->impl Iterator<Item=SurfaceEvent>+ Clone{
+        if !self.kind.check_resize(serial){Vec::new().into_iter()}
+        else{
+            vec![SurfaceEvent::Resized{id: self.id,size}].into_iter()
+        }
+    }
+*/
+    pub fn configure(
+        &mut self,
+        id: usize,
+        inner_geometry: Option<pal::Rectangle<i32, u32>>,
+        min_size: pal::Size2D<u32>,
+        max_size: pal::Size2D<u32>,
+    )->impl Iterator<Item=SurfaceEvent>+ Clone {
+        let mut events = Vec::new();
+        if self.min_size != min_size {
+            self.min_size = min_size.clone();
+            events.push(SurfaceEvent::MinSize{id,size: min_size});
+        }
+        if self.max_size != max_size {
+            self.max_size = max_size.clone();
+            events.push(SurfaceEvent::MaxSize{id,size: max_size});
+        }
+
+        let kind = self.kind.clone();
+        let depth = self.depth;
+        let current_position = self.position().clone();
+        let current_inner_geometry = self.inner_geometry();
+
+        //if let (Some(geometry),current_position,Some(buffer)) = (self.geometry(),&mut self.position,self.buffer.as_mut()){
+
+        if let (Some(inner_geometry),Some(current_inner_geometry)) = (inner_geometry.clone(),current_inner_geometry){
+            match kind {
+                SurfaceKind::Toplevel { handle, state }=>{
+                    if let Some(altered_state) = state.altered_state.as_ref() {
+                        match altered_state.resizing {
+                            Some((_,edge))=>{
+                                match edge {
+                                    ews::ResizeEdge::Left => {
+                                        let offset = current_inner_geometry.size.width as i32 - inner_geometry.size.width as i32;
+                                        let new_position = current_position + pal::Offset2D::from((offset,0));
+                                        events.append(&mut self.r#move(new_position, depth).collect());
+                                    }
+                                    ews::ResizeEdge::Top => {
+                                        let offset = current_inner_geometry.size.height as i32 - inner_geometry.size.height as i32;
+                                        let new_position = current_position + pal::Offset2D::from((0,offset));
+                                        events.append(&mut self.r#move(new_position, depth).collect());
+                                    }
+                                    ews::ResizeEdge::TopLeft => {
+                                        let offset_x = current_inner_geometry.size.width as i32 - inner_geometry.size.width as i32;
+                                        let offset_y = current_inner_geometry.size.height as i32 - inner_geometry.size.height as i32;
+                                        let new_position = current_position + pal::Offset2D::from((offset_x,offset_y));
+                                        events.append(&mut self.r#move(new_position, depth).collect());
+                                    }
+                                    _=>()
+                                }
+                            },
+                            _=>()
+                        }
+                    }
+                }
+                SurfaceKind::Popup { handle }=>(),
+            }
+        }
+        if let (Some(buffer),Some(inner_geometry)) = (self.buffer.as_mut(),inner_geometry) {
+            if buffer.geometry != inner_geometry {
+                buffer.geometry = inner_geometry.clone();
+                events.push(SurfaceEvent::Geometry{id,geometry: inner_geometry.clone()});
+                events.push(SurfaceEvent::Resized {
+                    id,
+                    size: buffer.size(),
+                });
+            }
+        }
+        events.into_iter()
+
+    }
+
+    pub fn start_interactive_resize(&mut self,serial: u32,edge: ews::ResizeEdge)->impl Iterator<Item=SurfaceEvent>+ Clone{
+        let geometry = self.geometry();
+        match &mut self.kind {
+            SurfaceKind::Toplevel{handle,state}=>{
+                if let Some(geometry) = geometry {
+                    if state.start_interactive_resize(serial, edge,geometry) {vec![SurfaceEvent::InteractiveResizeStarted{id: self.id,serial,edge}].into_iter()}
+                    else{Vec::new().into_iter()}
+                }
+                else{Vec::new().into_iter()}
+            }
+            SurfaceKind::Popup{handle}=>Vec::new().into_iter()
+        }
+    }
+
+    pub fn stop_interactive_resize(&mut self,serial: u32)->impl Iterator<Item=SurfaceEvent> + Clone{
+        match &mut self.kind {
+            SurfaceKind::Toplevel{handle,state}=>{
+                if state.stop_interactive_resize(serial){
+                    vec![SurfaceEvent::InteractiveResizeStopped{id: self.id,serial}].into_iter()
+                }
+                else{Vec::new().into_iter()}
+            }
+            SurfaceKind::Popup{handle}=>Vec::new().into_iter()
+        }
+    }
+
+    pub fn maximize(&mut self){
+        self.geometry().map(|geometry|{
+            match &mut self.kind {
+                SurfaceKind::Toplevel{handle,state}=>{
+                    state.altered_state.get_or_insert(AlteredState::new(geometry)).maximized = true;
+                },
+                SurfaceKind::Popup {..}=>()
+            }
+        });
+    }
+    /*
+    pub fn unmaximize(&mut self){
+        self.geometry().map(|geometry|{
+            match &mut self.kind {
+                SurfaceKind::Toplevel{handle,state}=>{
+                    let to_be_removed = state.altered_state.as_mut().map(|altered_state|{
+                        altered_state.maximized = false;
+                        if !(altered_state.maximized | altered_state.minimized | altered_state.fullscreen){
+                            Some(altered_state.original.clone())
+                        }
+                        else{None}
+                    });
+                    if let Some(original) = {
+                        self.position = original.position.clone();
+                        self.buffer.as_mut().ap
+                        state.altered_state = None;
+                    }
+                },
+                SurfaceKind::Popup {..}=>()
+            }
+        });
+    }
+    */
+    pub fn minimize(&mut self){
+        self.geometry().map(|geometry|{
+            match &mut self.kind {
+                SurfaceKind::Toplevel{handle,state}=>{
+                    state.altered_state.get_or_insert(AlteredState::new(geometry)).minimized = true;
+                },
+                SurfaceKind::Popup {..}=>()
+            }
+        });
+    }
+}
+impl Ord for Surface {
     fn cmp(&self, other: &Self) -> Ordering {
         self.depth.cmp(&other.depth)
     }
 }
-impl<S: Clone> PartialOrd for Surface<S> {
+impl PartialOrd for Surface {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.depth.cmp(&other.depth))
     }
 }
 
-impl<S: Clone> PartialEq for Surface<S> {
+impl PartialEq for Surface {
     fn eq(&self, other: &Self) -> bool {
         self.depth == other.depth
     }
 }
-impl<S: Clone> Eq for Surface<S> {}
+impl Eq for Surface {}
 
 #[derive(Debug)]
-pub struct SurfaceManager<S: Clone>{
-    cursor_surfaces: VecDeque<Surface<S>>,
-    surfaces: VecDeque<Surface<S>>,
+pub struct SurfaceManager {
+    cursor_surfaces: VecDeque<Surface>,
+    surfaces: VecDeque<Surface>,
 }
-impl<S: Clone> SurfaceManager<S> {
+impl SurfaceManager {
     const CURSOR_MIN_DEPTH: u32 = 0;
     const SURFACE_MIN_DEPTH: u32 = 16;
-    pub fn new()->Self {
+    pub fn new() -> Self {
         let cursor_surfaces = VecDeque::new();
         let surfaces = VecDeque::new();
-        Self{cursor_surfaces,surfaces}
+        Self {
+            cursor_surfaces,
+            surfaces,
+        }
     }
 
-    pub fn get_surface_at(&mut self, position: pal::Position2D<i32>)->Option<&Surface<S>> {
-        self.surfaces.iter().find(|surface|{
-            surface.geometry().contains(position)
+    pub fn get_surface_at(&mut self, position: &pal::Position2D<i32>) -> Option<&Surface> {
+        self.surfaces.iter().find(|surface| {
+            if let Some(buffer) = &surface.buffer {
+                let adjusted_position = surface.position.clone() + buffer.geometry.position.clone();
+                pal::Rectangle::from((adjusted_position, buffer.geometry.size.clone()))
+                    .contains(&position)
+                //pal::Rectangle::from((surface.position.clone(),buffer.size.clone())).contains(&position)
+            } else {
+                false
+            }
         })
     }
 
-    pub fn add_cursor_surface(&mut self, id: usize, handle: S, inner_geometry: pal::Rectangle<i32,u32>, geometry: pal::Rectangle<i32,u32>)->impl Iterator<Item=SurfaceEvent<S>>+Clone{
-        let state = SurfaceState::empty();
+    pub fn add_surface(
+        &mut self,
+        id: usize,
+        kind: SurfaceKind,
+    ) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        let min_size = pal::Size2D::from((0, 0));
+        let max_size = pal::Size2D::from((0, 0));
         let depth = 0;
-        self.surfaces.push_front(Surface {id,handle,inner_geometry,geometry,depth,state});
-        self.update_depth()
-    }
+        let position = pal::Position2D::from((0, 0));
+        let buffer = None;
 
-    pub fn add_surface(&mut self, id: usize, handle: S, inner_geometry: pal::Rectangle<i32,u32>, geometry: pal::Rectangle<i32,u32>)->impl Iterator<Item=SurfaceEvent<S>>+Clone{
-        let state = SurfaceState::empty();
-        let depth = 0;
-        self.surfaces.push_front(Surface {id,handle,inner_geometry,geometry,depth,state});
-        self.update_surfaces_depth()
-    }
-    pub fn del_surface(&mut self,id: usize)->impl Iterator<Item=SurfaceEvent<S>>+Clone{
-        if let Some(position) = self.surfaces.iter().position(|surface|surface.id == id){
-            let events: Vec<_> = self.surfaces.remove(position)
-            .map(|surface|SurfaceEvent::Removed(surface))
-            .into_iter()
-            .chain(self.update_surfaces_depth())
-            .collect();
+        let surface = Surface {
+            id,
+            kind: kind.clone(),
+            buffer,
+            min_size,
+            max_size,
+            position,
+            depth,
+        };
+        self.surfaces.push_front(surface);
 
-            events.into_iter()
+        std::iter::once(SurfaceEvent::Added { id, kind }).chain(self.update_surfaces_depth())
+    }
+    pub fn del_surface(&mut self, id: usize) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        if let Some(position) = self.surfaces.iter().position(|surface| surface.id == id) {
+            self.surfaces
+                .remove(position)
+                .map(|removed_surface| {
+                    std::iter::empty()
+                        .chain(
+                            removed_surface
+                                .buffer
+                                .map(|_| SurfaceEvent::BufferDetached { id })
+                                .into_iter(),
+                        )
+                        .chain(vec![SurfaceEvent::Removed { id }])
+                        .chain(self.update_surfaces_depth())
+                })
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .into_iter()
+        } else {
+            Vec::new().into_iter()
         }
-        else{Vec::new().into_iter()}
     }
-    pub fn move_surface(&mut self, id: usize, position: pal::Position2D<i32>)->impl Iterator<Item=SurfaceEvent<S>>+Clone{
+
+    pub fn attach_buffer(
+        &mut self,
+        id: usize,
+        handle: ews::WlBuffer,
+        inner_geometry: pal::Rectangle<i32, u32>,
+        suggested_size: pal::Size2D<u32>,
+    ) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.surface_mut(id)
+            .map(|surface| {
+                let event = if let Some(mut buffer) = surface.buffer.as_mut() {
+                    buffer.handle = handle.clone();
+                    let geometry = pal::Rectangle::from((surface.position.clone(), buffer.size()));
+                    SurfaceEvent::BufferReplaced {
+                        id,
+                        handle,
+                        inner_geometry,
+                        geometry,
+                    }
+                } else {
+                    surface.buffer = Some(Buffer {
+                        handle: handle.clone(),
+                        geometry: inner_geometry.clone(),
+                    }); //,size: suggested_size.clone()
+                    let geometry = pal::Rectangle::from((surface.position.clone(), suggested_size));
+                    SurfaceEvent::BufferAttached {
+                        id,
+                        handle,
+                        inner_geometry,
+                        geometry,
+                    }
+                };
+
+                event
+            })
+            .into_iter()
+    }
+
+    pub fn detach_buffer(&mut self, id: usize) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.surface_mut(id)
+            .map(|surface| {
+                surface.buffer = None;
+                SurfaceEvent::BufferDetached { id }
+            })
+            .into_iter()
+    }
+
+    pub fn move_surface(
+        &mut self,
+        id: usize,
+        position: pal::Position2D<i32>,
+    ) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.surface_mut(id)
+            .map(|surface| {
+                surface.position = position;
+                SurfaceEvent::Moved {
+                    id,
+                    position: surface.position.clone(),
+                    depth: surface.depth,
+                }
+            })
+            .into_iter()
+    }
+
+    pub fn interactive_resize_start(&mut self,id: usize,serial: u32,edge: ews::ResizeEdge) -> impl Iterator<Item = SurfaceEvent> + Clone {
         self.surface_mut(id).map(|surface|{
-            surface.geometry.position = position;
-            SurfaceEvent::Moved{
-                id,
-                position: surface.geometry().position,
-                depth: surface.depth
-            }
-        }).into_iter()
-    }
-    pub fn resize_surface(&mut self, id: usize, size: pal::Size2D<u32>,edge: ews::ResizeEdge)->impl Iterator<Item=SurfaceEvent<S>>+Clone{
-        unimplemented!();
-        Vec::new().into_iter()
+            surface.start_interactive_resize(serial,edge)
+        }).into_iter().flatten()
     }
 
-
-    pub fn surfaces_ref(&self)->impl Iterator<Item=&Surface<S>>{self.surfaces.iter()}
-    pub fn surfaces_mut(&mut self)->impl Iterator<Item=&mut Surface<S>>{self.surfaces.iter_mut()}
-
-    pub fn surface_ref(&self,id: usize)->Option<&Surface<S>> {
-        self.surfaces.iter().find(|surface|surface.id == id)
+    pub fn interactive_resize_surface(
+        &mut self,
+        id: usize,
+        serial: u32,
+        inner_size: pal::Size2D<u32>,
+    ) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.surface_ref(id)
+            .map(|surface| {
+                if surface.kind.check_resize(serial){
+                    Some(SurfaceEvent::Configuration { id, size: inner_size })
+                }
+                else{None}
+            })
+            .flatten().into_iter()
     }
-    pub fn surface_mut(&mut self,id: usize)->Option<&mut Surface<S>> {
-        self.surfaces.iter_mut().find(|surface|surface.id == id)
+
+    pub fn interactive_resize_end(&mut self,id: usize,serial: u32) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.surface_mut(id).map(|surface|{
+            surface.stop_interactive_resize(serial)
+        }).into_iter().flatten()
     }
 
-    fn update_depth(&mut self)->impl Iterator<Item=SurfaceEvent<S>>+Clone {
+    pub fn resize_surface(
+        &mut self,
+        id: usize,
+        size: pal::Size2D<u32>,
+    ) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.surface_ref(id)
+            .map(|_surface| SurfaceEvent::Configuration { id, size })
+            .into_iter()
+    }
+
+    pub fn configure(
+        &mut self,
+        id: usize,
+        geometry: Option<pal::Rectangle<i32, u32>>,
+        min_size: pal::Size2D<u32>,
+        max_size: pal::Size2D<u32>,
+    ) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.surface_mut(id)
+            .map(|surface| {
+                surface.configure(id,geometry,min_size,max_size)
+            })
+            .into_iter()
+            .flatten()
+
+    }
+
+    pub fn commit_surface(&mut self, id: usize) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        vec![SurfaceEvent::Committed { id }].into_iter()
+    }
+
+    pub fn surfaces_ref(&self) -> impl Iterator<Item = &Surface> {
+        self.surfaces.iter()
+    }
+    pub fn surfaces_mut(&mut self) -> impl Iterator<Item = &mut Surface> {
+        self.surfaces.iter_mut()
+    }
+
+    pub fn surface_ref(&self, id: usize) -> Option<&Surface> {
+        self.surfaces.iter().find(|surface| surface.id == id)
+    }
+    pub fn surface_mut(&mut self, id: usize) -> Option<&mut Surface> {
+        self.surfaces.iter_mut().find(|surface| surface.id == id)
+    }
+
+    fn update_depth(&mut self) -> impl Iterator<Item = SurfaceEvent> + Clone {
         std::iter::empty()
-        .chain(self.update_cursor_surfaces_depth())
-        .chain(self.update_surfaces_depth())
+            .chain(self.update_cursor_surfaces_depth())
+            .chain(self.update_surfaces_depth())
         //events.into_iter()
     }
 
-    fn update_cursor_surfaces_depth(&mut self)->impl Iterator<Item=SurfaceEvent<S>>+Clone {
-        self.cursor_surfaces.iter_mut().enumerate().map(|(index,surface)|{
-            surface.depth = index as u32;
+    fn update_cursor_surfaces_depth(&mut self) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        self.cursor_surfaces
+            .iter_mut()
+            .enumerate()
+            .map(|(index, surface)| {
+                surface.depth = index as u32;
 
-            let id = surface.id;
-            let position = (surface.geometry().position).into();
-            let depth = surface.depth;
-            SurfaceEvent::Moved{id,position,depth}
-        }).collect::<Vec<_>>().into_iter()
-    }
-    fn update_surfaces_depth(&mut self)->impl Iterator<Item=SurfaceEvent<S>>+Clone {
-        let depth_offset = self.cursor_surfaces.len();
-        self.surfaces.iter_mut().enumerate().map(|(index,surface)|{
-            surface.depth = (index + depth_offset) as u32;
-
-            let id = surface.id;
-            let position = (surface.geometry().position).into();
-            let depth = surface.depth;
-            SurfaceEvent::Moved{id,position,depth}
-        }).collect::<Vec<_>>().into_iter()
-    }
-}
-
-
-
-/*
-pub struct GeometryManager {
-    outputs: HashMap<usize,Rectangle<u32>>,
-
-
-    //size: Size2D<u32>,
-    //window_space: Rectangle<u32>
-}
-impl GeometryManager {
-    pub fn new()->Self {
-        let outputs = HashMap::new();
-        let surfaces = HashMap::new();
-        let surface_stack = BTreeSet::new();
-        //let window_space = Rectangle {};
-        Self {outputs,surfaces,surface_stack}
-    }
-
-
-    pub fn add_surface(&mut self, id: usize, size: Size2D<u32>, reserve_space: bool){
-        let surface = Surface {position,size,reserve_space};
-
-        if reserve_space {
-            if position.y + size.height > self.window_space.position.y {
-            }
-        }
-
-        self.surfaces.insert(id,surface);
-        self.surface_stack.push(id);
-    }
-    pub fn del_surface(&mut self, id: usize){
-        self.surfaces.remove(&id);
-        if let Some(index) = self.surface_stack.iter().position(|current_id|current_id == &id){
-            self.surface_stack.remove(index);
-        }
-    }
-
-    pub fn put_on_top(&mut self,id: usize){
-        if let Some(index) = self.surface_stack.iter().position(|current_id|current_id == &id){
-            let id = self.surface_stack.remove(index);
-            self.surface_stack.push(id);
-        }
-    }
-
-    pub fn cursor_movement(&self, id: SeatId, old_position: Position2D<u32>, new_position: Position2D<u32>)->Vec<Event> {
-        let mut events = Vec::new();
-        let surface_old = self.surface(old_position);
-        let surface_new = self.surface(old_position);
-
-        match (surface_old,surface_new){
-            (Some(id1),Some(id2))=>{
-                if id1 != id2 {
-                    let surface_id = id1.into();
-                    let event = SeatEvent::Cursor(CursorEvent::Left{surface_id});
-                    events.push(Event::Seat{id,event});
-
-/*
-                    let old_position = Point::new(old_position.x as f32,old_position.y as f32);
-                    let new_position = Point::new(new_position.x as f32, new_position.y as f32);
-                    let segment = Segment::new(old_position,new_position);
-
-                    let ray = Ray::new(old_position,*segment.direction().unwrap());
-                    let result = self.shape.cast_ray_and_get_normal(
-                        &Isometry::translation(0.0,0.0),
-                        &ray,
-                        1000000.0,
-                        false
-                    ).unwrap();
-                    let point = ray.point_at(result.toi);
-
-                    //Position2D{x: point.coords.x as u32,y: point.coords.y as u32}
-*/
-
-
-                    let surface_id = id2.into();
-                    let position = new_position;
-                    let event = SeatEvent::Cursor(CursorEvent::Entered{surface_id,position});
-                    events.push(Event::Seat{id,event});
+                let id = surface.id;
+                let position = surface.position.clone();
+                let depth = surface.depth;
+                SurfaceEvent::Moved {
+                    id,
+                    position,
+                    depth,
                 }
-
-                let position = new_position;
-                let event = SeatEvent::Cursor(CursorEvent::AbsoluteMovement{position});
-                events.push(Event::Seat{id,event});
-            }
-            _=>{}
-        }
-
-        events
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
     }
-
-    pub fn surface(&self,position: Position2D<u32>)->Option<usize> {
-        for surface_id in &self.surface_stack {
-            if let Some(surface) = self.surfaces.get(surface_id){
-                if surface.contains(position){return Some(*surface_id);}
-            }
-        }
-        None
+    fn update_surfaces_depth(&mut self) -> impl Iterator<Item = SurfaceEvent> + Clone {
+        let depth_offset = self.cursor_surfaces.len();
+        self.surfaces
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(index, surface)| {
+                let new_depth = (index + depth_offset) as u32;
+                if new_depth != surface.depth {
+                    surface.depth = new_depth;
+                    let id = surface.id;
+                    let position = surface.position.clone();
+                    let depth = surface.depth;
+                    Some(SurfaceEvent::Moved {
+                        id,
+                        position,
+                        depth,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
     }
-
 }
-*/

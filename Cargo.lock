@@ -825,7 +825,6 @@ dependencies = [
 [[package]]
 name = "keystroke_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Uniformbuffer3/keystroke_decoder.git#93d12e587094e67b9d0f4d764957365f88d01e02"
 dependencies = [
  "keyboard-types",
  "regex",

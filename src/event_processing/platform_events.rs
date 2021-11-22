@@ -1,154 +1,229 @@
-
+use crate::event_processing::WCompMessage;
+use crate::geometry_manager::{
+    CursorRequest, KeyboardRequest, OutputRequest, SeatRequest, WCompRequest,
+};
 use crate::wcomp::WComp;
 use pal::PlatformBackend;
-use crate::geometry_manager::{GeometryEvent,OutputEvent,CursorEvent};
-use crate::event_processing::WCompMessage;
 
 impl WComp {
-    pub(crate) fn process_platform_event(&mut self, message: pal::Event)->bool{
-        let mut redraw = false;
-        match message {
-            pal::Event::Output{time,id,event} => {
-                match &event {
-                    pal::OutputEvent::Added(_)=>{
-                        if self.platform.platform_type() == pal::PlatformType::Direct {
-                            self.platform.request(vec![pal::definitions::Request::Surface{request: pal::definitions::SurfaceRequest::Create(Some(id))}]);
+    pub(crate) fn process_platform_requests(
+        &mut self,
+        requests: impl Iterator<Item = pal::Event>,
+    ) -> impl Iterator<Item = WCompRequest> {
+        requests
+            .flat_map(|request| {
+                match request {
+                    pal::Event::Output { time, id, event } => match &event {
+                        pal::OutputEvent::Added(_) => {
+                            if self.platform.platform_type() == pal::PlatformType::Direct {
+                                self.platform
+                                    .request(vec![pal::definitions::Request::Surface {
+                                        request: pal::definitions::SurfaceRequest::Create(Some(id)),
+                                    }]);
+                            }
+                            Vec::new()
+                        }
+                        pal::OutputEvent::Removed => Vec::new(),
+                        _ => Vec::new(),
+                    },
+                    pal::Event::Surface { time, id, event } => {
+                        match &event {
+                            pal::SurfaceEvent::Added(surface_info) => {
+                                if let pal::definitions::Surface::WGpu(surface) =
+                                    &surface_info.surface
+                                {
+                                    let id = id.into();
+                                    let size = surface_info.size.clone();
+                                    let handle = surface.clone();
+                                    let request = WCompRequest::Output {
+                                        request: OutputRequest::Added { id, handle, size },
+                                    };
+                                    vec![request]
+                                } else {
+                                    panic!("It is not of WGpu type");
+                                }
+                            }
+                            pal::SurfaceEvent::Resized(size) => {
+                                let id = id.into();
+                                let size = size.clone();
+                                let request = WCompRequest::Output {
+                                    request: OutputRequest::Resized { id, size },
+                                };
+                                vec![request]
+                                //self.messages.borrow_mut().push(WCompMessage::from(event));
+                            }
+                            pal::SurfaceEvent::Removed => {
+                                let id = id.into();
+                                let request = WCompRequest::Output {
+                                    request: OutputRequest::Removed { id },
+                                };
+                                vec![request]
+                                //self.messages.borrow_mut().push(WCompMessage::from(event));
+                            }
+                            _ => Vec::new(),
                         }
                     }
-                    pal::OutputEvent::Removed=>{
-
-                    }
-                    _=>{
-                    }
-                }
-            },
-            pal::Event::Surface{time,id,event} => {
-                match &event {
-                    pal::SurfaceEvent::Added(surface_info) => {
-                        if let pal::definitions::Surface::WGpu(surface) = &surface_info.surface {
-                            let size = surface_info.size;
-                            self.wgpu_engine.create_surface(
-                                id.into(),
-                                String::from("MainSurface"),
-                                surface.clone(),
-                                size.width,
-                                size.height,
-                            );
-                            let id = id.into();
-                            let serial = ews::SERIAL_COUNTER.next_serial().into();
-                            let handle = ();
-                            let event = GeometryEvent::Output{serial,event: OutputEvent::Added{id,handle,size}};
-                            self.messages.borrow_mut().push(WCompMessage::from(event));
-                            //self.geometry_manager.add_output(id.into(), (), surface_info.size);
-                        } else {
-                            panic!("It is not of WGpu type");
-                        }
-                        redraw = true;
-                    },
-                    pal::SurfaceEvent::Resized(size) => {
-                        self.wgpu_engine.resize_surface(id.into(),size.width,size.height);
-                        let id = id.into();
-                        let serial = ews::SERIAL_COUNTER.next_serial().into();
-                        let size = *size;
-                        let event = GeometryEvent::Output{serial,event: OutputEvent::Resized{id,size}};
-                        self.messages.borrow_mut().push(WCompMessage::from(event));
-                        redraw = true;
-                    },
-                    pal::SurfaceEvent::Removed => {
-                        self.wgpu_engine.destroy_surface(id.into());
-
-                        let id = id.into();
-                        let serial = ews::SERIAL_COUNTER.next_serial().into();
-                        let event = GeometryEvent::Output{serial,event: OutputEvent::Removed{id}};
-                        self.messages.borrow_mut().push(WCompMessage::from(event));
-                        redraw = true;
-                    },
-                    _ => (),
-                }
-            }
-            pal::Event::Seat{time,id,event}=>{
-                match event {
-                    pal::SeatEvent::Added{name}=>{
-                        self.ews.create_seat(id.into(),name);
-                    }
-                    pal::SeatEvent::Keyboard(pal::KeyboardEvent::Added(_keyboard_info))=>{
-                        self.ews.add_keyboard(id.into(),200, 25);
-                    }
-                    pal::SeatEvent::Keyboard(pal::KeyboardEvent::Removed)=>{
-                        self.ews.del_keyboard(id.into());
-                    }
-                    pal::SeatEvent::Keyboard(pal::KeyboardEvent::Key {code,key: _,state,serial,time})=>{
-                        self.ews.get_keyboard(id.into()).map(|keyboard|{
-                            let keystate = match state {
-                                pal::State::Down=>ews::KeyState::Pressed,
-                                pal::State::Up=>ews::KeyState::Released
-                            };
-                            keyboard.input::<(),_>(
+                    pal::Event::Seat { time, id, event } => {
+                        match event {
+                            pal::SeatEvent::Added { name } => {
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Added { id, name },
+                                };
+                                vec![request]
+                                //self.messages.borrow_mut().push(WCompMessage::from(event));
+                            }
+                            pal::SeatEvent::Removed => {
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Removed { id },
+                                };
+                                vec![request]
+                                //self.messages.borrow_mut().push(WCompMessage::from(event));
+                            }
+                            pal::SeatEvent::Keyboard(pal::KeyboardEvent::Added(_keyboard_info)) => {
+                                //TODO Rimuovere valori hardcoded per il key rate and delay
+                                let id = id.into();
+                                let rate = 200;
+                                let delay = 25;
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Keyboard(KeyboardRequest::Added {
+                                        id,
+                                        rate,
+                                        delay,
+                                    }),
+                                };
+                                vec![request]
+                            }
+                            pal::SeatEvent::Keyboard(pal::KeyboardEvent::Removed) => {
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Keyboard(KeyboardRequest::Removed { id }),
+                                };
+                                vec![request]
+                            }
+                            pal::SeatEvent::Keyboard(pal::KeyboardEvent::Key {
                                 code,
-                                keystate,
-                                serial.into(),
+                                key,
+                                state,
+                                serial,
                                 time,
-                                |_modifier,_keysim|{ews::FilterResult::Forward}
-                            );
-                        });
-                    },
-                    pal::SeatEvent::Keyboard(pal::KeyboardEvent::AutoRepeat{rate: _,delay: _})=>{
+                            }) => {
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Keyboard(KeyboardRequest::Key {
+                                        id,
+                                        time,
+                                        code,
+                                        key,
+                                        state,
+                                    }),
+                                };
+                                vec![request]
+                            }
+                            pal::SeatEvent::Keyboard(pal::KeyboardEvent::AutoRepeat {
+                                rate: _,
+                                delay: _,
+                            }) => Vec::new(),
+                            pal::SeatEvent::Keyboard(pal::KeyboardEvent::LayoutModified {
+                                layout: _,
+                            }) => Vec::new(),
+                            pal::SeatEvent::Cursor(pal::CursorEvent::Added(info)) => {
+                                //let size = self.geometry_manager.get_cursor_size();
+                                let size = pal::Size2D {
+                                    width: 24,
+                                    height: 24,
+                                };
+                                let (position, depth) =
+                                    self.geometry_manager.get_surface_optimal_position(&size);
+                                let handle = ();
+                                let image = None;
 
-                    },
-                    pal::SeatEvent::Keyboard(pal::KeyboardEvent::LayoutModified {layout: _})=>{
-                    },
-                    pal::SeatEvent::Cursor(pal::CursorEvent::Added(info))=>{
-                        self.ews.add_cursor(id.into());
-                        let size = self.geometry_manager.get_cursor_size();
-                        let position = pal::Position2D::from(self.geometry_manager.get_surface_optimal_position(&size));
-                        let handle = ();
-                        let image = None;
-
-                        let id = id.into();
-                        let serial = ews::SERIAL_COUNTER.next_serial().into();
-                        let event = GeometryEvent::Cursor{serial,event: CursorEvent::Added{id,handle,position,image}};
-                        self.messages.borrow_mut().push(WCompMessage::from(event));
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Cursor(CursorRequest::Added {
+                                        id,
+                                        position,
+                                        image,
+                                    }),
+                                };
+                                vec![request]
+                                //self.messages.borrow_mut().push(WCompMessage::from(event));
+                            }
+                            pal::SeatEvent::Cursor(pal::CursorEvent::Removed) => {
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Cursor(CursorRequest::Removed { id }),
+                                };
+                                vec![request]
+                            }
+                            pal::SeatEvent::Cursor(pal::CursorEvent::Button {
+                                code,
+                                key,
+                                state,
+                            }) => {
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Cursor(CursorRequest::Button {
+                                        id,
+                                        time,
+                                        code,
+                                        key,
+                                        state,
+                                    }),
+                                };
+                                vec![request]
+                            }
+                            pal::SeatEvent::Cursor(pal::CursorEvent::Entered {
+                                surface_id,
+                                position,
+                            }) => {
+                                let id = id.into();
+                                let output_id = surface_id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Cursor(CursorRequest::Entered {
+                                        id,
+                                        output_id,
+                                    }),
+                                };
+                                vec![request]
+                            }
+                            pal::SeatEvent::Cursor(pal::CursorEvent::Left { surface_id }) => {
+                                let id = id.into();
+                                let output_id = surface_id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Cursor(CursorRequest::Left {
+                                        id,
+                                        output_id,
+                                    }),
+                                };
+                                vec![request]
+                            }
+                            pal::SeatEvent::Cursor(pal::CursorEvent::AbsoluteMovement {
+                                position,
+                            }) => self
+                                .geometry_manager
+                                .relative_move_cursor(id.into(), position)
+                                .map(|position| {
+                                    let id = id.into();
+                                    let request = WCompRequest::Seat {
+                                        request: SeatRequest::Cursor(CursorRequest::Moved {
+                                            id,
+                                            position,
+                                        }),
+                                    };
+                                    vec![request]
+                                })
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<_>>(),
+                            _ => Vec::new(),
+                        }
                     }
-                    pal::SeatEvent::Cursor(pal::CursorEvent::Removed)=>{
-                        self.ews.del_cursor(id.into());
-                        let id = id.into();
-                        let serial = ews::SERIAL_COUNTER.next_serial().into();
-                        let event = GeometryEvent::Cursor{serial,event: CursorEvent::Removed{id}};
-                        self.messages.borrow_mut().push(WCompMessage::from(event));
-                    }
-                    pal::SeatEvent::Cursor(pal::CursorEvent::Button{code,key,state})=>{
-                        let id = id.into();
-                        let serial = ews::SERIAL_COUNTER.next_serial().into();
-                        let event = GeometryEvent::Cursor{serial,event: CursorEvent::Button{id,time,code,key,state}};
-                        self.messages.borrow_mut().push(WCompMessage::from(event));
-                    }
-                    pal::SeatEvent::Cursor(pal::CursorEvent::Entered{surface_id,position})=>{
-                        let id = id.into();
-                        let serial = ews::SERIAL_COUNTER.next_serial().into();
-                        let output_id = surface_id.into();
-                        let event = GeometryEvent::Cursor{serial,event: CursorEvent::Entered{id,output_id}};
-                        self.messages.borrow_mut().push(WCompMessage::from(event));
-                    }
-                    pal::SeatEvent::Cursor(pal::CursorEvent::Left{surface_id})=>{
-                        let id = id.into();
-                        let serial = ews::SERIAL_COUNTER.next_serial().into();
-                        let output_id = surface_id.into();
-                        let event = GeometryEvent::Cursor{serial,event: CursorEvent::Left{id,output_id}};
-                        self.messages.borrow_mut().push(WCompMessage::from(event));
-                    }
-                    pal::SeatEvent::Cursor(pal::CursorEvent::AbsoluteMovement{position})=>{
-                        self.geometry_manager.relative_move_cursor(id.into(),position).map(|position|{
-                            let id = id.into();
-                            let serial = ews::SERIAL_COUNTER.next_serial().into();
-                            let event = GeometryEvent::Cursor{serial,event: CursorEvent::Moved{id,position}};
-                            self.messages.borrow_mut().push(WCompMessage::from(event));
-                        });
-                    }
-                    _=>{}
+                    _ => Vec::new(),
                 }
-            }
-            _ => (),
-        }
-        redraw
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }

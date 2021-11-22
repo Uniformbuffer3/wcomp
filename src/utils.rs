@@ -1,35 +1,39 @@
-
-
-pub fn shm_to_vulkan_format(shm_format: ews::ShmFormat)->Option<screen_task::TextureFormat> {
+pub fn shm_to_vulkan_format(shm_format: ews::ShmFormat) -> Option<screen_task::TextureFormat> {
     match shm_format {
-        ews::ShmFormat::Rgba8888=>Some(screen_task::TextureFormat::Rgba8Snorm),
-        _=>None
+        ews::ShmFormat::Rgba8888 => Some(screen_task::TextureFormat::Rgba8Snorm),
+        _ => None,
     }
 }
 
-pub fn shm_convert_format(data: &[u8],info: ews::BufferData)->screen_task::SurfaceSource {
-    let data = &data[info.offset as usize..(info.offset+info.height*info.stride) as usize];
+pub fn shm_convert_format(data: &[u8], info: ews::BufferData) -> screen_task::SurfaceSource {
+    let data = &data[info.offset as usize..(info.offset + info.height * info.stride) as usize];
     match info.format {
-        ews::ShmFormat::Rgba8888=>{
+        ews::ShmFormat::Rgba8888 => {
             let info = screen_task::HostAllocationInfo {
-                size: [info.width as u32,info.height as u32],
+                size: [info.width as u32, info.height as u32],
                 stride: info.stride as u32,
-                format: wgpu_engine::TextureFormat::Rgba8UnormSrgb
+                format: wgpu_engine::TextureFormat::Rgba8UnormSrgb,
             };
             let data = data.to_vec();
-            screen_task::SurfaceSource::HostAllocation {info,data}
-        },
-        ews::ShmFormat::Argb8888 | ews::ShmFormat::Xrgb8888=>{
+            screen_task::SurfaceSource::HostAllocation { info, data }
+        }
+        ews::ShmFormat::Argb8888 | ews::ShmFormat::Xrgb8888 => {
+            /*
             let packed_data: &[u32] = bytemuck::cast_slice(data);
-            let data: Vec<u8> = packed_data.iter().map(|data|*data << 8).map(|data|data.to_le_bytes()).flatten().collect();
+            let data: Vec<u8> = packed_data
+                .iter()
+                .map(|data| *data << 8)
+                .map(|data| data.to_le_bytes())
+                .flatten()
+                .collect();*/
             let info = screen_task::HostAllocationInfo {
-                size: [info.width as u32,info.height as u32],
+                size: [info.width as u32, info.height as u32],
                 stride: info.stride as u32,
-                format: wgpu_engine::TextureFormat::Rgba8UnormSrgb
+                format: wgpu_engine::TextureFormat::Rgba8UnormSrgb,
             };
             let data = data.to_vec();
-            screen_task::SurfaceSource::HostAllocation {info,data}
-        /*
+            screen_task::SurfaceSource::HostAllocation { info, data }
+            /*
 
             let img: image::ImageBuffer<image::Rgba<u8>, Vec<_>> = image::ImageBuffer::from_vec(info.width as u32,info.height as u32],data.clone()).unwrap();
             width = img.dimensions().0;
@@ -49,7 +53,7 @@ pub fn shm_convert_format(data: &[u8],info: ews::BufferData)->screen_task::Surfa
             texture_source = TextureSource::Local;
             texture_format = wgpu::TextureFormat::Rgba8UnormSrgb
             */
-        },
-        _=>panic!()
+        }
+        _ => panic!(),
     }
 }

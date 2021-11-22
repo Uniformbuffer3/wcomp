@@ -43,3 +43,6 @@ gfx-backend-gl = { path = "../gfx/src/backend/gl" }
 gfx-backend-dx12 = { path = "../gfx/src/backend/dx12" }
 gfx-backend-dx11 = { path = "../gfx/src/backend/dx11" }
 gfx-backend-metal = { path = "../gfx/src/backend/metal" }
+
+[patch."https://github.com/Uniformbuffer3/keystroke_decoder.git"]
+keystroke_decoder = { path = "../keystroke_decoder"}
