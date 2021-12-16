@@ -1,2 +1,5 @@
-- Implementare il cursore
-- Implementare la meccanica di assegnazione dei buffer durante i commit
+- Implementare la renderizzazione del cursore
+- Implementazione maximize e minimize
+
+Problemi:
+- Bordo nero intorno alle finestre

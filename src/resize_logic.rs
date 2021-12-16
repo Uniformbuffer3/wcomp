@@ -7,7 +7,7 @@ pub struct ResizeLogic {
     requests: Rc<RefCell<Vec<WCompRequest>>>,
     id: usize,
     serial: u32,
-    inner_geometry: pal::Rectangle<i32,u32>,
+    inner_geometry: pal::Rectangle<i32, u32>,
     edge: ews::ResizeEdge,
 }
 impl ResizeLogic {
@@ -16,11 +16,11 @@ impl ResizeLogic {
         requests: Rc<RefCell<Vec<WCompRequest>>>,
         id: usize,
         serial: u32,
-        inner_geometry: pal::Rectangle<i32,u32>,
+        inner_geometry: pal::Rectangle<i32, u32>,
         edge: ews::ResizeEdge,
     ) -> Self {
         requests.borrow_mut().push(WCompRequest::Surface {
-            request: SurfaceRequest::InteractiveResizeStart { id,serial, edge },
+            request: SurfaceRequest::InteractiveResizeStart { id, serial, edge },
         });
         Self {
             start_data,
@@ -35,18 +35,18 @@ impl ResizeLogic {
 impl ews::PointerGrab for ResizeLogic {
     fn motion(
         &mut self,
-        handle: &mut ews::PointerInnerHandle<'_>,
+        _handle: &mut ews::PointerInnerHandle<'_>,
         location: ews::Point<f64, ews::Logical>,
-        focus: Option<(ews::WlSurface, ews::Point<i32, ews::Logical>)>,
-        serial: ews::Serial,
-        time: u32,
+        _focus: Option<(ews::WlSurface, ews::Point<i32, ews::Logical>)>,
+        _serial: ews::Serial,
+        _time: u32,
     ) {
         self.start_data.focus.as_ref().map(|(focus, position)| {
             let id = ews::with_states(&focus, |surface_data| ews::surface_id(&surface_data))
                 .ok()
                 .flatten()
                 .unwrap();
-            let position = pal::Position2D::from((position.x,position.y));
+            let position = pal::Position2D::from((position.x, position.y));
             let cursor_position = pal::Position2D {
                 x: location.x as i32,
                 y: location.y as i32,
@@ -60,70 +60,117 @@ impl ews::PointerGrab for ResizeLogic {
                         height: self.inner_geometry.size.height,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
                 ews::ResizeEdge::Bottom => {
                     let inner_size = pal::Size2D {
                         width: self.inner_geometry.size.height,
-                        height: (relative_cursor_position.y - self.inner_geometry.position.y) as u32,
+                        height: (relative_cursor_position.y - self.inner_geometry.position.y)
+                            as u32,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
                 ews::ResizeEdge::BottomRight => {
                     let inner_size = pal::Size2D {
                         width: (relative_cursor_position.x - self.inner_geometry.position.x) as u32,
-                        height: (relative_cursor_position.y - self.inner_geometry.position.y) as u32,
+                        height: (relative_cursor_position.y - self.inner_geometry.position.y)
+                            as u32,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
                 ews::ResizeEdge::Left => {
                     let inner_size = pal::Size2D {
-                        width: (self.inner_geometry.size.width as i32 - relative_cursor_position.x + self.inner_geometry.position.x) as u32,
+                        width: (self.inner_geometry.size.width as i32 - relative_cursor_position.x
+                            + self.inner_geometry.position.x) as u32,
                         height: self.inner_geometry.size.height,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
                 ews::ResizeEdge::Top => {
                     let inner_size = pal::Size2D {
                         width: self.inner_geometry.size.width,
-                        height: (self.inner_geometry.size.height as i32 - relative_cursor_position.y + self.inner_geometry.position.y) as u32,
+                        height: (self.inner_geometry.size.height as i32
+                            - relative_cursor_position.y
+                            + self.inner_geometry.position.y)
+                            as u32,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
                 ews::ResizeEdge::TopLeft => {
                     let inner_size = pal::Size2D {
-                        width: (self.inner_geometry.size.width as i32 - relative_cursor_position.x + self.inner_geometry.position.x) as u32,
-                        height: (self.inner_geometry.size.height as i32 - relative_cursor_position.y + self.inner_geometry.position.y) as u32,
+                        width: (self.inner_geometry.size.width as i32 - relative_cursor_position.x
+                            + self.inner_geometry.position.x) as u32,
+                        height: (self.inner_geometry.size.height as i32
+                            - relative_cursor_position.y
+                            + self.inner_geometry.position.y)
+                            as u32,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
                 ews::ResizeEdge::TopRight => {
                     let inner_size = pal::Size2D {
                         width: (relative_cursor_position.x - self.inner_geometry.position.x) as u32,
-                        height: (self.inner_geometry.size.height as i32 - relative_cursor_position.y + self.inner_geometry.position.y) as u32,
+                        height: (self.inner_geometry.size.height as i32
+                            - relative_cursor_position.y
+                            + self.inner_geometry.position.y)
+                            as u32,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
                 ews::ResizeEdge::BottomLeft => {
                     let inner_size = pal::Size2D {
-                        width: (self.inner_geometry.size.width as i32 - relative_cursor_position.x + self.inner_geometry.position.x) as u32,
-                        height: (relative_cursor_position.y - self.inner_geometry.position.y) as u32,
+                        width: (self.inner_geometry.size.width as i32 - relative_cursor_position.x
+                            + self.inner_geometry.position.x) as u32,
+                        height: (relative_cursor_position.y - self.inner_geometry.position.y)
+                            as u32,
                     };
                     vec![WCompRequest::Surface {
-                        request: SurfaceRequest::InteractiveResize { id, serial: self.serial, inner_size },
+                        request: SurfaceRequest::InteractiveResize {
+                            id,
+                            serial: self.serial,
+                            inner_size,
+                        },
                     }]
                 }
 
@@ -131,7 +178,6 @@ impl ews::PointerGrab for ResizeLogic {
             };
             self.requests.borrow_mut().append(&mut events);
         });
-
     }
     fn button(
         &mut self,
@@ -144,11 +190,14 @@ impl ews::PointerGrab for ResizeLogic {
         if button == self.start_data().button && state == ews::ButtonState::Released {
             handle.unset_grab(serial, time);
             self.requests.borrow_mut().push(WCompRequest::Surface {
-                request: SurfaceRequest::InteractiveResizeStop { id: self.id,serial: self.serial },
+                request: SurfaceRequest::InteractiveResizeStop {
+                    id: self.id,
+                    serial: self.serial,
+                },
             });
         }
     }
-    fn axis(&mut self, handle: &mut ews::PointerInnerHandle<'_>, details: ews::AxisFrame) {
+    fn axis(&mut self, _handle: &mut ews::PointerInnerHandle<'_>, _details: ews::AxisFrame) {
         //println!("Axis event");
     }
     fn start_data(&self) -> &ews::GrabStartData {

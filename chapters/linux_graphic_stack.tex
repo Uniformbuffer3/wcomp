@@ -1,0 +1,49 @@
+\chapter{The Linux graphic stack}
+\section{X11}
+Most of the modern desktop environments on Linux rely on the X11 architecture to draw windows on the screen. X11 is a window communication protocol that allow the applications (clients) to communicate with the graphic server (usually Xorg). In this protocol, four entities are involved:
+\begin{itemize}
+	\item The system, that include various Linux subsystems that handle gpus, keyboard and mouse events
+	\item The X server, core of the protocol and handler of the drawing operation
+	\item The compositor, that handle the geometry of the scene, so the position of all the surfaces
+	\item The clients, the applications that want to draw their surfaces on the screen
+\end{itemize}
+The protocol requires many interactions between the actors, causing communication overhead. Sometimes they don't even have all the informations to operate correctly. X11 is a server-side rendering protocol, this means that the server is responsible for drawing the buffer contents of all the clients. The protocol is very old and it has some foundamental design issues that simply weren't a thing when it was created.
+\newpage
+
+\begin{multicols}{2}
+\vspace*{\fill}
+\centering
+\includegraphics[width=\columnwidth]{x-architecture.png}\\
+\captionof{figure}{X11 architecture}\label{pinki}
+\vspace*{\fill}
+\columnbreak
+\vspace*{\fill}
+\begin{itemize}
+	\item[1] System events are detected and sent to the server
+	\item[2] The server doesn't know the geometry of the clients (only the compositor does), so every event is sent to all the clients.
+	\item[3] The client elaborate the event and request a redraw (partial or total) of its surface.
+	\item[4] The server calculate the bounding box of all the redraw request received until that point and emit a damage event to the compositor, signaling that part of the screen need to be redrawed.
+	\item[5] The compositor elaborate the damage event and based on the current scene geometry, request a redraw to the server for the damaged and visible areas of the screen.
+	\item[6] The server redraw such areas and prepare itself the next draw request
+\end{itemize}
+\vspace*{\fill}
+\end{multicols}
+\newpage
+\section{Wayland}
+Wayland is a new window communication protocol designed to fix the major X11 problems. In this protocol the compositor and the graphic server are merged into a single entity, so that, what it is now called just compositor, is aware of the geometry of the scene and properly handle events and redrawing. Wayland require client-side rendering, so that each client update their surface indipendently (and in parallel). The result is then sent to the compositor to be composited with all the other clients's surfaces.
+\begin{multicols}{2}
+\vspace*{\fill}
+\centering
+\includegraphics[width=\columnwidth]{wayland-architecture.png}\\
+\captionof{figure}{Wayland architecture}\label{pinki}
+\vspace*{\fill}
+\columnbreak
+\vspace*{\fill}
+\begin{itemize}
+	\item[1] System events are detected and sent to the compositor
+	\item[2] The compositor elaborate the event on the scene geometry and send it to the appropriate client, while transforming screen coordinates to window-local coordinates.
+	\item[3] The client elaborate the event and request a redraw (partial or total) of its surface.
+	\item[4] The compositor elaborate the redraw requests of all the clients and render the scene
+\end{itemize}
+\vspace*{\fill}
+\end{multicols}

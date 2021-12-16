@@ -1,0 +1,30 @@
+
+
+The rendering engine is the component responsible to draw the windows on the screen. The engine is designed to do not share rendering resources and when it is required, it is done in a “controlled state”. In this way the engine have the complete control of the resource access timing so that it can perform optimizations by having a global overview over all the tasks. This also reduce the chance a task can make a bad usage of the resources and cause rendering gliches and crashes. This behaviour is achieved by requiring rendering task to implementing the \textbf{Task} trait. The main role of this trait is to allow:
+\begin{itemize}
+	\item Returning a list of resource update operations (operations are not applied by the task).
+	\item Recording commands on the provided command buffer.
+\end{itemize}
+The rendering process is started by passing to the engine an iterator of \textbf{Task} implementors and performing the following operations:
+\begin{itemize}
+	\item Gather all the resource update operations from the tasks and apply them in bulk to get advantage of rendering api optimizations.
+	\item Based on the tasks and the context, create the appropiate command buffers and call the record function for each trait based on the iterator order (the mentioned function is part of the \textbf{Task} trait). The engine will eventually record additional commands before and after each task record.
+	\item Record additional operations based on the context.
+	\item Dispatch the command buffer and present the result on the screen. 
+\end{itemize}
+based on the context, the engine will give the tasks the chance to update resources and record commands over the command buffer.  
+
+
+
+
+
+
+\section{What is a compositor}
+A compositor is generally associated with desktop environment and it is the component that effectively draws on screen.
+A compositor is an application responsible for:
+\begin{itemize}
+	\item Gather surfaces from the clients, composite them into a single image and present it to the screen.
+	\item Gather inputs from the system and distribute them to the clients.
+	\item Manage displays
+	\item Manage clients surfaces (windows)
+\end{itemize}

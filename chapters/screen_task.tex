@@ -1,0 +1,64 @@
+\chapter{Screen Task}
+The "Screen Task" is a task for the "WComp Engine". It allow to create,destroy and modify surfaces on the screen. In the project it is used to render the buffers provided by the Wayland clients, making them visible on the screen.
+
+\section{Surface manager}
+The "Surface Manager" is the component that actually manage the surfaces. It provides the functions to create,destroy, and manipulate surfaces.
+
+
+
+The task initialize as empty. Each time a swapchain is created, it is added in a hashmap using the device it is created from as index. In this way the "Surface Manager" is aware of every swapchain available and can initialize per device resources.
+
+
+\section{The rendering pipeline}
+The rendering pipeline is designed with just one vertex and one fragment shader.
+The pipeline layout is built to accomodate one sampler and a dynamic array of texture, where each texture is the surface of a Wayland client. Since the sampling logic is the same for all the textures, just one sampler is needed.
+The sampler and the array of textures will be used in the fragment shader.
+An overview of how shaders interact each other and the provided resources to them:
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{screen_task_pipeline.png}
+	\captionof{figure}{Screen task pipeline overview}
+\end{center}
+
+\subsection{Vertex shader stage}
+At vertex shader stage, the pipeline will provide data from the vertex buffer at instance-rate, this mean that new data is picked from the buffer when the drawed instance change, so the same data is provided for multiple vertexes. The provided data is composed by:
+\begin{itemize}
+	\item Position: The position of the surface to draw. The coordinate refer to the top left corner of the surface.
+	\item Size: The size of the surface to draw
+	\item Depth: The depth of the surface to draw. This allow to control which surface is drawed on top and what on bottom.
+	\item Index: The texture index of the surface to draw. This is used to indicate which texture is associated to the current surface.
+\end{itemize}
+At this stage the projection matrix is also provided. The projection matrix data is constant for the whole stage. It is built as following:
+\begin{center}
+\[
+	\begin{bmatrix}
+		2.0 / out\_w & 0.0 & 0.0 & 0.0 \\
+		0.0  & -2.0 * out\_h & 0.0 & 0.0 \\
+		0.0  & 0.0 & 1.0 / depth\_levels & 0.0 \\
+		-1.0 - out\_x/out\_w * 2.0 & 1.0+out\_y/out\_h*2.0 & 0.0 & 0.0
+	\end{bmatrix}
+	\]
+	\captionof{figure}{Projection matrix}
+\end{center}
+where:
+\begin{itemize}
+	\item out\_x: The x position of the target output
+	\item out\_y: The y position of the target output
+	\item out\_w: The width of the target output
+	\item out\_h: The height of the target output
+	\item depth\_levels: The maximum number of depth levels allowed. So this also define the maximum number of surfaces on screen
+\end{itemize}
+It assolves to two tasks:
+\begin{itemize}
+	\item Translate the coordinate based on the output position. This means that if an output have a position of 50,50 and sized 300x300, a surface drawed at 50,50 of size 100x100 will appear in the top left corner of the output.
+	\item Convert the coordinate system used by the compositor with the one used by WGpu. The compositor use a top left origin discrete coordinate system where the maxium size depends on the output size. WGpu use a center origin uniform Y inverted coordinate system.
+\end{itemize}
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{coordinate_systems.png}
+	\captionof{figure}{WGpu coordinate system}
+\end{center}
+The projection matrix is multiplied with the vertex coordinate calculated inside the vertex shader and the result, the fragment position, is then passed to the next stage.
+On the next stage are also passed without changes the surface depth and the surface texture index.
+
+
+\subsection{Fragment shader stage}
+In the fragment shader stage, the "index" is used to get the right texture from the "texture array". Then the fragment position is used, with the "sampler", to sample the correct fragment color from the texture. So the produced fragment color is sent as output of the fragment shader stage. The fragment depth will be also setted using the "depth" calculated on the previous stage. This will be used by the driver to understand if the fragment should be discarded because not visible (like when drawing the new pixel under another) or actually drawed.

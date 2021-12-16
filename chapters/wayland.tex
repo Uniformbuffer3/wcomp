@@ -1,0 +1,50 @@
+\chapter{Wayland}
+Wayland is a protocol that allow to windows (\textbf{clients}) to comunicate with a compositor (\textbf{server}).
+The protocol contains various procedures (called \textbf{interfaces}) and the compositor can choose which to implements.
+The main concepts of Wayland are:
+\begin{itemize}
+	\item Seat: A seat represent a combination of input devices, like keyboard,mouse or touch, assigned to a single user. Multiple user should be represented by one seat each.
+	\item Surface: A surface is a rectangular area that can be presented on the screen. Before it can be used, a role must be defined and a buffer must be attached. The role will define how the surface it is used and the buffer parameters are used to calculate the surface size.
+	\item Output: A output represent a part of the compositor geometry. It is generally associated to a physical monitor, but it could be used to represent other kind of devices, physical or not.  
+\end{itemize}
+
+The comunication is done using a socket file placed in a standardized folder, so the server know where to place it and clients where to look for it.
+Messages sent by the server are called \textbf{events}, while messages sent by clients are called \textbf{requests}.
+Structures are represented and stored using xml format, so that a language specific api can be easily built from. \textbf{Interfaces} can be updated over time, so they can have different versions.
+On start, a server will expose the list of the implemented interfaces and the maximum version supported for each of them. So if a server claim to support the version 4 of an interface, it have to also support versions 3,2 and 1 of the same interface. 
+A client can request to bind to a server supported interface, producing a client instance of that interface.
+Wayland is very versatile and does not require a server to implement all the protocols, but just what it needs, so it could be used to build very specialized compositors.
+
+\section{The interfaces}
+There are many interfaces server and clients can implements, some are stable and some are unstable. Unstable interfaces are so because subject to change, but some of them are so essential that are available on most compositors. Some desktop environments have created and use custom Wayland interfaces so that their compositor and shell ui can manage to get some special feature. Following a general description of the most important interfaces:
+\begin{itemize}
+	\item wl\_display: This is the core of the protocol allowing to query the wl\_registry or create an instance of wl\_callback.
+	\item wl\_registry: The registry interface allow the server to publish the supported and available interfaces, allowing the clients to instantiate globals.
+	\item wl\_callback: A callback can be used to handle "done" events.
+	\item wl\_compositor: This interface allow clients to request surfaces. 
+	\item wl\_shm: This interface allow the server to publish the list of the supported formats and the clients to notify the creation of a host backed memory wl\_shm\_pool.
+	\item wl\_shm\_pool: This interface allow clients to create buffers.
+	\item wl\_buffer: A buffer represent a formatted memory, known to both the client and the server, that can be attached to a wl\_surface. A wl\_buffer can be created from multiple interfaces; the most simple one is the wl\_shm\_pool.
+	\item wl\_shell: This interface allow to create a wl\_shell\_surface from a wl\_surface. This operation will also set the role of the wl\_surface.
+	\item wl\_shell\_surface: A wl\_shell\_surface is a traditional "desktop style" surface and this interface allow to apply common operations like moving, resizing and similar.
+	\item wl\_surface: A wl\_surface is a surface the server can present on the screen. A surface can and must have a role before it is used and once a role has been set, it cannot be changed. A role is assigned when used as part of the creation of other objects: for example, if a wl\_surface is used as part of the creation of a wl\_subsurface, it will acquire the "subsurface" role and cannot be used for other purposes. Surface are abstract objects and does not have a size until a wl\_buffer is attached to it. The surface size will be calculated on the buffer size, pitch and format.
+	\item wl\_seat: A seat represent a combination of input devices, like keyboard,mouse or touch, assigned to a single user. Multiple user should be represented by one seat each. This interface allow to query the wl\_keyboard, the wl\_mouse and wl\_touch available to the provided seat.
+	\item wl\_pointer: This interface allow to query pointer events to the provided pointer.
+	\item wl\_keyboard: This interface allow to query keyboard events to the provided pointer.
+	\item wl\_touch: This interface allow to query touch events to the provided pointer.
+	\item wl\_output: A wl\_output represent a part of the compositor geometry. It is generally associated to a display output where surface can be presented on. Each output has a list of properties commonly found in monitor descriptions and they include the output position relative to the global compositor geometry.
+	\item wl\_region: A wl\_region represent the area of a surface.
+	\item wl\_subcompositor: This interface allow to create define the parent of a wl\_surface, turning it in a wl\_subsurface. Subsurfaces can be used to build composite windows; this can be useful for many reasons. Among them composite windows allow the server to know which surface are related each other and allow to specify different format for different part of the window, that can optimize the performance of media players, for example.
+	\item wl\_subsurface: A wl\_subsurface is a surface that got a parent surface.
+\end{itemize}
+An important extension that is stable and considered standard for desktop environments is the "Xdg Shell" extension. It add the following interfaces: 
+\begin{itemize}
+	\item xdg\_wm\_base: Allow to turn wl\_surface objects into xdg\_surface objects and to create xdg\_positioner objects
+	\item xdg\_surface: The representation of a wl\_surface specific for this extension. This interface can be used to turn xdg\_surface objects into xdg\_toplevel or xdg\_popup objects.
+	\item xdg\_toplevel: The representation of a desktop-like surface, generally used to present the main content of an application; through this interface it is also possible to control the surface properties.
+	\item xdg\_popup: The representation of a popup, a short-lived surface generated by some parent surface.
+	\item xdg\_positioner: Represent a rectangular area over a surface and it is used to placeplace correctly a popup over its parent surface. It also have properties that allow the compositor to realign the popup in case its surface is not visible.
+\end{itemize}
+
+\section{Quick view of the protocol}
+The protocol is designed to be extendible and it is divided in stable and unstable interfaces. When a new

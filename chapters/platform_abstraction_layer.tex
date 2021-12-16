@@ -1,0 +1,12 @@
+\chapter{Platform Abstraction Layer}
+The Platform Abstraction Layer allow the user to handle under a unified abstraction the management of input events, monitor outputs and surface creation. PAL have a tree-like structure: 
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{pal_structure.png}
+	\captionof{figure}{PAL structure}
+\end{center}
+
+Events are gathered from backeds platforms, like XCB or Wayland platforms. They are then passed to the upper layer, the os platform, like the Linux platform. Finally they are passed again to the top level platform simply called Platform, that it is actually the entity the user communicate with to get events. Requests work in the same way but they visit the tree in the reverse order, from top to down.
+
+Events design is inspired by the Wayland events, it is a very good abstraction and allow, with some little changes, to represent other platforms events too. Requests design is instead built from scratch. They are lazy: when a request is issued, the nothing is returned. Instead the effect of the request is returned as an events, among the others, in the next dispatch. So if a create surface request is issued, the user will get the result (the surface creation event) among the events returned on the next dispatch.
+Requests with wrong parameters, called in a bad state or unsupported by the underlying platform could be ignored or partitially satisfied. The result of the operation is still returned among the events, so the user should not rely on the request made, but on the events returned.
+Differently from other windowing libraries,regarding the surface creation, the “contact point” between the application and the PAL is the rendering api surface and not the raw surface pointers from which it is created. This allow to create a “virtual platforms” by combining the displays provided by a rendering api and an input provider that can read inputs event directly from the system, so that it can act like an existing display server.

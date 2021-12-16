@@ -1,0 +1,16 @@
+\chapter{Embedded Wayland Server}
+Embedded Wayland Server (EWS) is a library designed to simplify the initialization of Wayland related structures, while also unifying the requests coming from different Wayland interfaces into a big enumeration able to represent all of them. EWS was initially designed to make easier the interaction with a lot of Wayland interface, but the evolution of Smithay, the underlying backend, made most of them superfluous, so they were removed. Still EWS solve some problems:
+\begin{itemize}
+	\item Every entity instantiated by the Wayland clients are identified with an id. Unfortunately such ids are client specific. This means that two clients can have instances with the same id, they are unique only relative to the instances of the same client. To solve this problem, when an interface is instantiated (like when a surface is created), EWS will attach a progressive id to it, allowing the instance to uniquely identified.
+	\item When a surface is destroyed, no event is emitted from the Wayland side. The only way to know it is to query if a specific surface is still alive. EWS will handle this behaviour at each dispatch and will produce surface removed requests.
+\end{itemize}
+
+Wayland requests are returned as "WaylandRequest" enumerator with the following entries:
+\begin{itemize}
+	\item Seat: includes all the seat related requests, like change cursor image or explicit keyboard focus requests
+	\item SurfaceRemoved: request to remove a surface
+	\item Commit: request to commit a surface
+	\item XdgRequest: request to create a xdg surface (a surface of the xdg interface) or modify its state, like size, maximized, minimized and so on.
+	\item Dmabuf: request to create a dma buffer
+	\item Dnd: request a drag and drop operation
+\end{itemize}

@@ -1,12 +1,15 @@
 mod surface_manager;
-pub use surface_manager::{Surface, SurfaceEvent, SurfaceKind, SurfaceManager, SurfaceRequest};
+pub use surface_manager::{
+    PopupState, Surface, SurfaceEvent, SurfaceKind, SurfaceManager, SurfaceRequest,
+};
 
 mod output_manager;
 pub use output_manager::{OutputEvent, OutputManager, OutputRequest};
 
 mod seat_manager;
 pub use seat_manager::{
-    CursorEvent, CursorRequest, KeyboardEvent, KeyboardRequest, SeatEvent, SeatManager, SeatRequest,
+    Cursor, CursorEvent, CursorRequest, KeyboardEvent, KeyboardRequest, SeatEvent, SeatManager,
+    SeatRequest,
 };
 
 use std::fmt::Debug;
@@ -153,6 +156,10 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    pub fn cursor_ref(&self, id: usize) -> Option<&Cursor> {
+        self.seat_manager.cursor_ref(id)
+    }
+
     pub fn add_cursor(
         &mut self,
         id: usize,
@@ -275,7 +282,7 @@ impl GeometryManager {
             .map(|cursor| cursor.position().clone())
             .map(|position| self.get_surface_at(&position))
             .flatten()
-            .map(|surface| surface.id);
+            .map(|surface| surface.id());
 
         let events = self
             .seat_manager
@@ -291,7 +298,23 @@ impl GeometryManager {
 
         self.postprocess_events(events)
     }
+    pub fn cursor_axis(
+        &mut self,
+        id: usize,
+        time: u32,
+        source: pal::AxisSource,
+        direction: pal::AxisDirection,
+        value: pal::AxisValue,
+    ) -> impl Iterator<Item = WCompEvent> + Clone {
+        log::info!(target:"WComp","Geometry manager | Cursor button");
+        let events = self
+            .seat_manager
+            .cursor_axis(id, time, source, direction, value)
+            .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
+            .map(WCompEvent::from);
 
+        self.postprocess_events(events)
+    }
     pub fn add_output(
         &mut self,
         id: usize,
@@ -351,11 +374,12 @@ impl GeometryManager {
         &mut self,
         id: usize,
         kind: SurfaceKind,
+        position: pal::Position2D<i32>,
     ) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Surface added");
         let events = self
             .surface_manager
-            .add_surface(id, kind)
+            .add_surface(id, kind, position)
             .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
             .map(WCompEvent::from);
 
@@ -372,17 +396,26 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
-    pub fn interactive_resize_start(&mut self,id: usize,serial: u32,edge: ews::ResizeEdge) -> impl Iterator<Item = WCompEvent> + Clone {
+    pub fn interactive_resize_start(
+        &mut self,
+        id: usize,
+        serial: u32,
+        edge: ews::ResizeEdge,
+    ) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Interactive resize started on surface {}", id);
         let events = self
             .surface_manager
-            .interactive_resize_start(id, serial,edge)
+            .interactive_resize_start(id, serial, edge)
             .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
             .map(WCompEvent::from);
         self.postprocess_events(events)
     }
 
-    pub fn interactive_resize_end(&mut self,id: usize,serial: u32) -> impl Iterator<Item = WCompEvent> + Clone {
+    pub fn interactive_resize_end(
+        &mut self,
+        id: usize,
+        serial: u32,
+    ) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Interactive resize stopped on surface {}", id);
         let events = self
             .surface_manager
@@ -406,6 +439,26 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    pub fn maximize_surface(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
+        log::info!(target:"WComp","Geometry manager | Surface {} maximized", id);
+        let events = self
+            .surface_manager
+            .maximize_surface(id)
+            .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
+            .map(WCompEvent::from);
+        self.postprocess_events(events)
+    }
+
+    pub fn unmaximize_surface(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
+        log::info!(target:"WComp","Geometry manager | Surface {} unmaximized", id);
+        let events = self
+            .surface_manager
+            .unmaximize_surface(id)
+            .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
+            .map(WCompEvent::from);
+        self.postprocess_events(events)
+    }
+
     pub fn interactive_resize_surface(
         &mut self,
         id: usize,
@@ -415,13 +468,13 @@ impl GeometryManager {
         log::info!(target:"WComp","Geometry manager | Surface {} resized interactively to {}", id, inner_size);
         let events = self
             .surface_manager
-            .interactive_resize_surface(id,serial, inner_size)
+            .interactive_resize_surface(id, serial, inner_size)
             .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
             .map(WCompEvent::from);
         self.postprocess_events(events)
     }
 
-    pub fn configure(
+    pub fn configure_surface(
         &mut self,
         id: usize,
         inner_geometry: Option<pal::Rectangle<i32, u32>>,
@@ -431,7 +484,7 @@ impl GeometryManager {
         log::info!(target:"WComp","Geometry manager | Configuring surface {}", id);
         let events = self
             .surface_manager
-            .configure(id, inner_geometry, min_size, max_size)
+            .configure_surface(id, inner_geometry, min_size, max_size)
             .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
             .map(WCompEvent::from);
         self.postprocess_events(events)
@@ -478,7 +531,7 @@ impl GeometryManager {
     }
 
     pub fn commit_surface(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
-        log::info!(target: "WComp","Geometry manager | Committed surface: {:#?}",id);
+        log::info!(target: "WComp","Geometry manager | Committed surface: {}",id);
         let events = self
             .surface_manager
             .commit_surface(id)
@@ -491,23 +544,41 @@ impl GeometryManager {
         &mut self,
         events: impl Iterator<Item = WCompEvent> + Clone,
     ) -> impl Iterator<Item = WCompEvent> + Clone {
+        let mut additional_events = Vec::new();
         events.clone().for_each(|event| {
             match event {
                 WCompEvent::Seat {
                     serial: _,
-                    event:
-                        SeatEvent::Cursor(CursorEvent::Button {
-                            id,
-                            time,
-                            code,
-                            key,
-                            state,
-                        }),
-                } => {}
+                    event: SeatEvent::Keyboard(KeyboardEvent::Focus { id: _, surface }),
+                } => {
+                    additional_events.append(
+                        &mut self
+                            .surface_manager
+                            .focus_surface(surface)
+                            .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
+                            .map(WCompEvent::from)
+                            .collect(),
+                    );
+                }
+                WCompEvent::Seat {
+                    serial: _,
+                    event: SeatEvent::Cursor(CursorEvent::Moved { id, position }),
+                } => {
+                    let focus = self.get_surface_at(&position).map(|surface| surface.id());
+                    additional_events.append(
+                        &mut self
+                            .seat_manager
+                            .focus_cursor(id, focus)
+                            .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
+                            .map(WCompEvent::from)
+                            .collect(),
+                    );
+                }
                 WCompEvent::Output {
                     serial: _,
-                    event: OutputEvent::Removed { id },
+                    event: OutputEvent::Removed { id: _ },
                 } => {
+                    /*
                     let screen_size = self.output_manager.screen_size();
                     let surfaces = self.surface_manager.surfaces_mut().filter_map(|surface| {
                         if screen_size.contains(&surface.position) {
@@ -516,6 +587,7 @@ impl GeometryManager {
                             None
                         }
                     });
+                    */
                     /*
                     for surface in surfaces {
                         if let Some(size) = surface.size().cloned() {
@@ -530,8 +602,9 @@ impl GeometryManager {
                 }
                 WCompEvent::Output {
                     serial: _,
-                    event: OutputEvent::Moved { old, new_position },
+                    event: OutputEvent::Moved { id: _, position: _ },
                 } => {
+                    /*
                     let surfaces = self.surface_manager.surfaces_mut().filter_map(|surface| {
                         if old.geometry.contains(&surface.position) {
                             Some(surface)
@@ -539,6 +612,7 @@ impl GeometryManager {
                             None
                         }
                     });
+                    */
                     /*
                     for surface in surfaces {
                         if let Some(size) = surface.size().cloned() {
@@ -551,11 +625,43 @@ impl GeometryManager {
                     }
                     */
                 }
+                WCompEvent::Surface {
+                    serial: _,
+                    event: SurfaceEvent::Maximized { id },
+                } => {
+                    let mut events = self
+                        .surface_manager
+                        .surface_ref(id)
+                        .map(|surface| surface.position())
+                        .cloned()
+                        .map(|position| self.output_manager.get_output_at(&position))
+                        .flatten()
+                        .map(|output| output.geometry.clone())
+                        .map(|output_geometry| {
+                            std::iter::empty()
+                                .chain(
+                                    self.surface_manager
+                                        .move_surface(id, output_geometry.position),
+                                )
+                                .chain(
+                                    self.surface_manager
+                                        .resize_surface(id, output_geometry.size),
+                                )
+                        })
+                        .into_iter()
+                        .flatten()
+                        .map(|event| (ews::SERIAL_COUNTER.next_serial().into(), event))
+                        .map(WCompEvent::from)
+                        .collect::<Vec<_>>();
+
+                    additional_events.append(&mut events);
+                }
                 _ => (),
             }
             //self.events.push(event);
         });
-        events
+
+        events.chain(additional_events.into_iter())
     }
 
     fn reposition_surfaces(&mut self) {}

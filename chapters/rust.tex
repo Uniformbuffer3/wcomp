@@ -1,0 +1,12 @@
+\chapter{Rust}
+Rust is a safe, parallel and high performance compiled language.
+It has a unique memory management system called "ownership" that can be shortly described as:
+\begin{itemize}
+	\item Every variable has one and just one owner.
+	\item When the owner goes out of scope, the variable is deallocated.
+\end{itemize}
+There is no garbage collectors involved, the compiler will track the lifetime of each variable to grants these rules are honored. This is done using compile time checks, so there is no runtime performance cost. Rust also apply checks for variable that go over the thread boundaries (so a variable shared with other threads) to make sure the operation is safe to perform, making it a very good language for highly threaded programs that would require a lot of time to debug a race condition with other languages.
+The combination of the ownership system with other compile time checks allow the compiler to (nearly) detect every wrong memory usage that could lead to undefined behaviours. Of course there are also some downsides: comparing to another same-role language like C, the compile time is higher (due to the compile checks) and it is much more difficult to write, since the programmer is required to know exactly where,when and how a variable is accessed, and this is expressed with a more complex syntax and semantic.
+
+\section{Rust async feature}
+Rust natively support async functions. When an async function is called, it is not executed, but instead returns an opaque handle implementing the "Future" trait (promise). Only the "Future" trait is part of Rust itself, the executors that actually run async functions are normal programs and many libraries are available that provide such functionalities. Inside an async function it is possible to "await" for the execution of anothery async function. The compiler will generate, for each async function, a state machine and chain them togheter.

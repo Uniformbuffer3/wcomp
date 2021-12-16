@@ -11,13 +11,13 @@ impl WComp {
         events.for_each(|event| {
             match event {
                 WCompEvent::Output {
-                    serial,
+                    serial: _,
                     event: OutputEvent::Added { id, handle, size },
                 } => {
-                    log::info!(target: "WCompEvent","Output added");
+                    log::info!(target: "WCompEvent","Output {} added of {:?}",id,size);
                     self.wgpu_engine.create_surface(
                         id.into(),
-                        String::from("MainSurface"),
+                        String::from(format!("Output {}", id)),
                         handle,
                         size.width,
                         size.height,
@@ -25,51 +25,56 @@ impl WComp {
                     redraw = true;
                 }
                 WCompEvent::Output {
-                    serial,
+                    serial: _,
                     event: OutputEvent::Removed { id },
                 } => {
-                    log::info!(target: "WCompEvent","Output removed");
+                    log::info!(target: "WCompEvent","Output {} removed",id);
                     self.wgpu_engine.destroy_surface(id.into());
                     redraw = true;
                 }
                 WCompEvent::Output {
-                    serial,
+                    serial: _,
                     event: OutputEvent::Resized { id, size },
                 } => {
-                    log::info!(target: "WCompEvent","Output resized");
+                    log::info!(target: "WCompEvent","Output {} resized to {:?}",id,size);
                     self.wgpu_engine.resize_surface(id, size.width, size.height);
                     redraw = true;
                 }
                 WCompEvent::Output {
-                    serial,
-                    event: OutputEvent::Moved { old, new_position },
+                    serial: _,
+                    event: OutputEvent::Moved { id, position },
                 } => {
-                    log::info!(target: "WCompEvent","Output moved");
-                    //TODO Muovere output nel surface_manager
+                    log::info!(target: "WCompEvent","Output {} moved to {:?}",id,position);
+                    self.wgpu_engine.task_handle_cast_mut(
+                        &self.screen_task,
+                        |screen_task: &mut ScreenTask| {
+                            screen_task.move_output(id, [position.x, position.y]);
+                        },
+                    );
                 }
                 WCompEvent::Seat {
-                    serial,
+                    serial: _,
                     event: SeatEvent::Added { id, name },
                 } => {
                     log::info!(target: "WCompEvent","Seat {} added",id);
                     self.ews.create_seat(id, name);
                 }
                 WCompEvent::Seat {
-                    serial,
+                    serial: _,
                     event: SeatEvent::Removed { id },
                 } => {
                     log::info!(target: "WCompEvent","Seat {} removed",id);
                     self.ews.destroy_seat(id);
                 }
                 WCompEvent::Seat {
-                    serial,
+                    serial: _,
                     event: SeatEvent::Keyboard(KeyboardEvent::Added { id, rate, delay }),
                 } => {
                     log::info!(target: "WCompEvent","Keyboard {} added",id);
                     self.ews.add_keyboard(id, rate, delay);
                 }
                 WCompEvent::Seat {
-                    serial,
+                    serial: _,
                     event: SeatEvent::Keyboard(KeyboardEvent::Removed { id }),
                 } => {
                     log::info!(target: "WCompEvent","Keyboard {} removed",id);
@@ -79,15 +84,15 @@ impl WComp {
                     serial,
                     event: SeatEvent::Keyboard(KeyboardEvent::Focus { id, surface }),
                 } => {
-                    log::info!(target: "WCompEvent","Keyboard {} focus {:#?}",id,surface);
+                    log::info!(target: "WCompEvent","Keyboard {} focus {:?}",id,surface);
                     self.ews.get_keyboard(id).map(|keyboard| {
                         let focus = surface
                             .map(|surface_id| {
                                 self.geometry_manager
                                     .surface_ref(surface_id)
                                     .map(|surface| surface.handle())
+                                    .flatten()
                             })
-                            .flatten()
                             .flatten();
                         keyboard.set_focus(focus, serial.into());
                     });
@@ -103,7 +108,7 @@ impl WComp {
                             state,
                         }),
                 } => {
-                    log::info!(target: "WCompEvent","Keyboard {} key {:#?}",id,key);
+                    log::info!(target: "WCompEvent","Keyboard {} key {:?}",id,key);
                     self.ews.get_keyboard(id).map(|keyboard| {
                         let keystate = match state {
                             pal::State::Down => ews::KeyState::Pressed,
@@ -119,19 +124,19 @@ impl WComp {
                     });
                 }
                 WCompEvent::Seat {
-                    serial,
+                    serial: _,
                     event:
                         SeatEvent::Cursor(CursorEvent::Added {
                             id,
-                            position,
-                            image,
+                            position: _,
+                            image: _,
                         }),
                 } => {
                     log::info!(target: "WCompEvent","Cursor {} added",id);
                     self.ews.add_cursor(id);
                 }
                 WCompEvent::Seat {
-                    serial,
+                    serial: _,
                     event: SeatEvent::Cursor(CursorEvent::Removed { id }),
                 } => {
                     log::info!(target: "WCompEvent","Cursor {} removed",id);
@@ -145,10 +150,15 @@ impl WComp {
                     if let Some(cursor_handle) = self.ews.get_cursor(id) {
                         let focus = self
                             .geometry_manager
-                            .get_surface_at(&position)
+                            .cursor_ref(id)
+                            .map(|cursor| cursor.focus())
+                            .cloned()
+                            .flatten()
+                            .map(|surface_id| self.geometry_manager.surface_ref(surface_id))
+                            .flatten()
                             .map(|surface| {
                                 surface.handle().map(|handle| {
-                                    let position = surface.position.clone();
+                                    let position = surface.position().clone();
                                     let position: (i32, i32) = position.into();
                                     (handle.clone(), position.into())
                                 })
@@ -174,7 +184,7 @@ impl WComp {
                             state,
                         }),
                 } => {
-                    log::info!(target: "WCompEvent","Cursor {} button: {:#?}",id,key);
+                    log::info!(target: "WCompEvent","Cursor {} button: {:?}",id,key);
                     self.ews.get_cursor(id).map(|cursor| {
                         let state = match state {
                             pal::State::Down => ews::ButtonState::Pressed,
@@ -184,37 +194,71 @@ impl WComp {
                     });
                 }
                 WCompEvent::Seat {
-                    serial,
-                    event: SeatEvent::Cursor(CursorEvent::Focus { id, surface }),
+                    serial: _,
+                    event:
+                        SeatEvent::Cursor(CursorEvent::Axis {
+                            id,
+                            time,
+                            source,
+                            direction,
+                            value,
+                        }),
                 } => {
-                    log::info!(target: "WCompEvent","Cursor {} focus {:#?}",id,surface);
+                    log::info!(target: "WCompEvent","Cursor {} axis",id);
+                    self.ews.get_cursor(id).map(|cursor| {
+                        let source = match source {
+                            pal::AxisSource::Wheel => ews::AxisSource::Wheel,
+                        };
+
+                        let mut axis_frame = ews::AxisFrame::new(time).source(source);
+
+                        let direction = match direction {
+                            pal::AxisDirection::Horizontal => ews::Axis::HorizontalScroll,
+                            pal::AxisDirection::Vertical => ews::Axis::VerticalScroll,
+                        };
+
+                        match value {
+                            pal::AxisValue::Discrete(value) => {
+                                axis_frame = axis_frame.discrete(direction, value);
+                            }
+                            _ => (),
+                        }
+
+                        cursor.axis(axis_frame);
+                    });
                 }
                 WCompEvent::Seat {
-                    serial,
-                    event: SeatEvent::Cursor(CursorEvent::Entered { id, output_id }),
+                    serial: _,
+                    event: SeatEvent::Cursor(CursorEvent::Focus { id, surface }),
+                } => {
+                    log::info!(target: "WCompEvent","Cursor {} focused surface {:?}",id,surface);
+                }
+                WCompEvent::Seat {
+                    serial: _,
+                    event: SeatEvent::Cursor(CursorEvent::Entered { id, output_id: _ }),
                 } => {
                     log::info!(target: "WCompEvent","Cursor {} entered",id);
                 }
                 WCompEvent::Seat {
-                    serial,
-                    event: SeatEvent::Cursor(CursorEvent::Left { id, output_id }),
+                    serial: _,
+                    event: SeatEvent::Cursor(CursorEvent::Left { id, output_id: _ }),
                 } => {
                     log::info!(target: "WCompEvent","Cursor {} left",id);
                 }
                 WCompEvent::Surface {
-                    serial,
-                    event: SurfaceEvent::Added { id, kind },
+                    serial: _,
+                    event: SurfaceEvent::Added { id, kind: _ },
                 } => {
                     log::info!(target: "WCompEvent","Surface {} added",id);
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
                     event: SurfaceEvent::Removed { id },
                 } => {
-                    log::info!(target: "WCompEvent","Surface removed: {:#?}",id);
+                    log::info!(target: "WCompEvent","Surface removed: {}",id);
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
                     event:
                         SurfaceEvent::Moved {
                             id,
@@ -232,7 +276,45 @@ impl WComp {
                     redraw = true;
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
+                    event: SurfaceEvent::InteractiveResizeStarted {id,serial:_,edge}
+                } => {
+                    log::info!(target: "WCompEvent","Interactive resize started on surface {} with edge {:?}",id,edge);
+                    self.geometry_manager
+                        .surface_ref(id)
+                        .map(|surface| match surface.kind() {
+                            SurfaceKind::Toplevel { handle, .. } => {
+                                handle
+                                    .with_pending_state(|top_level_state| {
+                                        top_level_state.states.set(ews::SurfaceState::Resizing);
+                                    })
+                                    .unwrap();
+                                handle.send_configure();
+                            }
+                            _ => (),
+                        });
+                },
+                WCompEvent::Surface {
+                    serial: _,
+                    event: SurfaceEvent::InteractiveResizeStopped {id,serial: _}
+                } => {
+                    log::info!(target: "WCompEvent","Interactive resize stopped on surface {}",id);
+                    self.geometry_manager
+                        .surface_ref(id)
+                        .map(|surface| match surface.kind() {
+                            SurfaceKind::Toplevel { handle, .. } => {
+                                handle
+                                    .with_pending_state(|top_level_state| {
+                                        top_level_state.states.unset(ews::SurfaceState::Resizing);
+                                    })
+                                    .unwrap();
+                                handle.send_configure();
+                            }
+                            _ => (),
+                        });
+                },
+                WCompEvent::Surface {
+                    serial: _,
                     event: SurfaceEvent::Resized { id, size },
                 } => {
                     log::info!(target: "WCompEvent","Resizing surface {:#?} to {}",id,size);
@@ -245,13 +327,13 @@ impl WComp {
                     redraw = true;
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
                     event: SurfaceEvent::Configuration { id, size },
                 } => {
                     log::info!(target: "WCompEvent","Configuration");
                     self.geometry_manager
                         .surface_ref(id)
-                        .map(|surface| match &surface.kind {
+                        .map(|surface| match surface.kind() {
                             SurfaceKind::Toplevel { handle, .. } => {
                                 handle
                                     .with_pending_state(|state| {
@@ -268,16 +350,16 @@ impl WComp {
                         });
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
                     event:
                         SurfaceEvent::BufferAttached {
                             id,
                             handle,
-                            inner_geometry,
+                            inner_geometry: _,
                             geometry,
                         },
                 } => {
-                    log::info!(target: "WCompEvent","Attaching buffer");
+                    log::info!(target: "WCompEvent","Attaching buffer to surface {}",id);
                     match ews::buffer_type(&handle) {
                         Some(ews::BufferType::Shm) => {
                             ews::with_buffer_contents(&handle, |data, info| {
@@ -333,16 +415,16 @@ impl WComp {
                     }
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
                     event:
                         SurfaceEvent::BufferReplaced {
                             id,
                             handle,
-                            inner_geometry,
-                            geometry,
+                            inner_geometry: _,
+                            geometry: _,
                         },
                 } => {
-                    log::info!(target: "WCompEvent","Replacing buffer");
+                    log::info!(target: "WCompEvent","Replacing buffer of surface {}",id);
                     let source = match ews::buffer_type(&handle) {
                         Some(ews::BufferType::Shm) => {
                             ews::with_buffer_contents(&handle, |data, info| {
@@ -383,10 +465,10 @@ impl WComp {
                     });
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
                     event: SurfaceEvent::BufferDetached { id },
                 } => {
-                    log::info!(target: "WCompEvent","Detaching buffer");
+                    log::info!(target: "WCompEvent","Detaching buffer from surface {}",id);
                     self.wgpu_engine.task_handle_cast_mut(
                         &self.screen_task,
                         |screen_task: &mut ScreenTask| {
@@ -396,10 +478,48 @@ impl WComp {
                     redraw = true;
                 }
                 WCompEvent::Surface {
-                    serial,
+                    serial: _,
+                    event: SurfaceEvent::Activated { id },
+                } => {
+                    log::info!(target: "WCompEvent","Surface {} activated",id);
+                    self.geometry_manager
+                        .surface_ref(id)
+                        .map(|surface| match surface.kind() {
+                            SurfaceKind::Toplevel { handle, .. } => {
+                                handle
+                                    .with_pending_state(|top_level_state| {
+                                        top_level_state.states.set(ews::SurfaceState::Activated);
+                                    })
+                                    .unwrap();
+                                handle.send_configure();
+                            }
+                            _ => (),
+                        });
+                }
+                WCompEvent::Surface {
+                    serial: _,
+                    event: SurfaceEvent::Deactivated { id },
+                } => {
+                    log::info!(target: "WCompEvent","Surface {} deactivated",id);
+                    self.geometry_manager
+                        .surface_ref(id)
+                        .map(|surface| match surface.kind() {
+                            SurfaceKind::Toplevel { handle, .. } => {
+                                handle
+                                    .with_pending_state(|top_level_state| {
+                                        top_level_state.states.unset(ews::SurfaceState::Activated);
+                                    })
+                                    .unwrap();
+                                handle.send_configure();
+                            }
+                            _ => (),
+                        });
+                }
+                WCompEvent::Surface {
+                    serial: _,
                     event: SurfaceEvent::Committed { id },
                 } => {
-                    log::info!(target: "WCompEvent","Committed");
+                    log::info!(target: "WCompEvent","Surface {} committed",id);
                     self.geometry_manager
                         .surface_ref(id)
                         .map(|surface| (surface.handle().cloned(), surface.buffer().cloned()))
@@ -451,7 +571,7 @@ impl WComp {
         });
         redraw
     }
-
+    /*
     fn process_new_surface(&mut self, surface: &ews::WlSurface) -> bool {
         let role = ews::get_role(surface);
         let result = ews::with_states(&surface, |surface_data| {
@@ -472,9 +592,10 @@ impl WComp {
                     Some(ews::BufferType::Shm) => {
                         ews::with_buffer_contents(&buffer, |data, info| {
                             let size = pal::Size2D::from((info.width as u32, info.height as u32));
-                            let (position, depth) =
+                            let (position, _depth) =
                                 self.geometry_manager.get_surface_optimal_position(&size);
                             let geometry = pal::Rectangle::from((position, size));
+                            /*
                             let inner_geometry = surface_data
                                 .cached_state
                                 .current::<ews::SurfaceCachedState>()
@@ -491,7 +612,7 @@ impl WComp {
                                     pal::Rectangle::from((position, size))
                                 })
                                 .unwrap_or(geometry.clone());
-
+                            */
                             let has_been_added = match role {
                                 Some("xdg_toplevel") => {
                                     //let event = WCompRequest::Surface{serial,event: SurfaceRequest::Added{id,handle,inner_geometry,geometry}};
@@ -599,4 +720,5 @@ impl WComp {
             }
         }
     }
+    */
 }

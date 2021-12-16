@@ -1,4 +1,3 @@
-use crate::event_processing::WCompMessage;
 use crate::geometry_manager::*;
 use pal::PlatformBackend;
 use screen_task::ScreenTask;
@@ -34,9 +33,14 @@ impl WComp {
 
         let mut platform = pal::Platform::new(vec![Box::new(wgpu_engine.wgpu_context())]);
         if platform.platform_type() == pal::PlatformType::Compositor {
-            platform.request(vec![pal::Request::Surface {
-                request: pal::SurfaceRequest::Create(None),
-            }]);
+            platform.request(vec![
+                pal::Request::Surface {
+                    request: pal::SurfaceRequest::Create(None),
+                },
+                pal::Request::Surface {
+                    request: pal::SurfaceRequest::Create(None),
+                },
+            ]);
         }
 
         let parameters = ews::Parameters {
@@ -138,7 +142,7 @@ impl WComp {
                                 });
                                 match result {
                                     Ok(_) => (),
-                                    Err(_) => to_be_removed.push(surface.id),
+                                    Err(_) => to_be_removed.push(surface.id()),
                                 }
                             });
                         });

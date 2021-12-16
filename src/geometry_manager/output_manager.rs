@@ -35,8 +35,8 @@ pub enum OutputEvent {
         size: pal::Size2D<u32>,
     },
     Moved {
-        old: Output,
-        new_position: pal::Position2D<i32>,
+        id: usize,
+        position: pal::Position2D<i32>,
     },
 }
 
@@ -74,9 +74,13 @@ impl OutputManager {
             .map(|output| output.geometry.x_offset())
             .get_or_insert(0);
         let position = pal::Position2D::from((x_offset, 0));
-        let output = Output::new(id.clone(), (position, size.clone()));
+        let output = Output::new(id.clone(), (position.clone(), size.clone()));
         self.outputs.push(output);
-        vec![OutputEvent::Added { id, handle, size }].into_iter()
+        vec![
+            OutputEvent::Added { id, handle, size },
+            OutputEvent::Moved { id, position },
+        ]
+        .into_iter()
     }
     pub fn del_output(&mut self, id: usize) -> impl Iterator<Item = OutputEvent> + Clone {
         let indexes_to_update = self
@@ -178,7 +182,7 @@ impl OutputManager {
         &'a mut self,
         range: impl std::ops::RangeBounds<usize> + Iterator<Item = usize>,
     ) -> impl Iterator<Item = OutputEvent> + Clone {
-        let mut updates = Vec::new();
+        let mut events = Vec::new();
         for index in range {
             let x_offset = if index == 0 {
                 0
@@ -187,18 +191,16 @@ impl OutputManager {
             };
 
             if self.outputs[index].geometry.position.x == x_offset {
-                return updates.into_iter();
+                return events.into_iter();
             } else {
-                let old = self.outputs[index].clone();
+                let id = self.outputs[index].id;
                 self.outputs[index].geometry.position.x = x_offset;
-                let update = OutputEvent::Moved {
-                    old,
-                    new_position: self.outputs[index].geometry.position.clone(),
-                };
-                updates.push(update);
+                let position = self.outputs[index].geometry.position.clone();
+                let event = OutputEvent::Moved { id, position };
+                events.push(event);
             }
         }
-        updates.into_iter()
+        events.into_iter()
     }
 
     pub fn get_surface_optimal_size(&self) -> pal::Size2D<u32> {
@@ -230,5 +232,11 @@ impl OutputManager {
                 pal::Position2D::from([x, y])
             })
             .unwrap_or(pal::Position2D::from([0, 0]))
+    }
+
+    pub fn get_output_at(&self, position: &pal::Position2D<i32>) -> Option<&Output> {
+        self.outputs
+            .iter()
+            .find(|output| output.geometry.contains(position))
     }
 }

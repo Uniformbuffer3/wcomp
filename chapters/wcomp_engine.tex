@@ -1,0 +1,82 @@
+\chapter{WComp Engine}
+The WComp engine is a rendering engine that allow to schedule multiple rendering and compute tasks efficientely. Operations are not applied immediately, but they are scheduled for execution. When the dispatch operation is called on the engine, all the pending operations are executed. The engine is designed to not allow tasks to directly access rendering resources handles, but they are manipulated through identifier. This approach allow the engine to have the complete control over the resource access timing, so it can perform optimizations by batching all the operation at the same time. Avoiding to expose rendering handles also reduce the chance a task runs bad commands and cause rendering gliches and crashes. 
+
+The engine contains two subsystems:
+\begin{itemize}
+	\item The task manager, that manage task related requests.
+	\item The resource manager, that manage rendering resources.
+\end{itemize}
+Both managers are specialization of a struct called Entity manager.
+
+\newpage
+\section{Entity Manager}
+The entity manager allow to store entities in a graph structure. When an entity is added, a "EntityId" handle is returned. Such handle do not grant direct access to the stored entity, but it can be used to retrieve it from the graph. Entities can declare dependencies using the "HaveDependencies" trait, required for a struct to be added to the entity manager:
+\begin{lstlisting}
+pub trait HaveDependencies {
+	fn dependencies(&self) -> Vec<EntityId>;
+}
+\end{lstlisting}
+If the entity of an associated "EntityId" is update (so replaced), the entity manager will take care of updating dependencies accordingly. It is also possible to generate a graphviz dot format representation of the current state of the entity manager. The generated code can be then digested by the "dot" tool, part of the graphviz package, to generate a visual representation of the entities, a very useful feature for debugging.
+\section{DMG Entity Manager}
+DMG entity manager is a little specialization of the entity manager that allow it to keep track of "damaged" entities. When an entity is flagged as "damaged", all the children entities are flagged the same. How this "damaged" state can be used may vary. In this project is used to keep track of the rendering resources that are required to be rebuilt.
+\newpage
+\section{Task Manager}
+The task manager is a specialization of "Entity Manager" and a subsystem of the "WComp Engine". It is responsible to manage the task creation, destruction and manipulation. 
+When a task is added, a "TaskId" handle is returned. A task to be so needs to implement the \textbf{TaskTrait} trait defined as following:
+\begin{lstlisting}
+pub trait TaskTrait: Downcast + Send + Sync {
+  fn name(&self) -> String;
+  fn update_resources(
+  	&mut self, 
+  	update_context: &mut UpdateContext
+  ) {}
+  fn command_buffers(&self) -> Vec<CommandBufferId> {
+  	Vec::new()
+  }
+}
+\end{lstlisting}
+\begin{itemize}
+    \item name: returns the task name
+	\item update\_resources: allow the task to create, destroy and manipulate rendering resources using the "UpdateContext" struct. Such struct will store all the requested operation to be executed later (with also other tasks requests) as a single batch. It also give access to events of the shared rendering surfaces, so that tasks can update other resources they own accordingly.
+	\item command\_buffers: returns the command buffer the task want to be executed
+\end{itemize}
+By using a "TaskId", the task manager allow to get direct access the the stored task, even if the tasks are heterogeneous. Tasks are required to implement the "Downcast" trait (a modified version of the standard "Any" trait) that allow to safely downcast its reference to the requested type. If the requested type match the actual type, the task is returned, otherwise "None".
+\subsection{Commit operation}
+During the engine dispatch operation, the task manager graph is visited in topological order and at each task (node), the "update\_resources" function is called and then command buffers are collected using the "command\_buffers" function. This operation is performed in single thread mode: since tasks are contained in the graph and they require to mutate their internal state, it is required to lock the graph for the whole time the task is updating. Of course the implementation can be rearranged by doing a per-task lock instead of global graph lock, just the performance gain wouldn't worth the time invested for the current project due to the very low number of tasks (2).
+
+
+\newpage
+\section{Resource Manager}
+The resource manager is a specialized version of the "DMG Entity Manager" and a subsystem of the "WComp Engine". It is responsible to handle the creation, destuction and manipulation of rendering resources requested by the tasks.
+A rendering resource is represented by the "Resource" struct, containing various informations:
+\begin{itemize}
+	\item owners: The "TaskId" owning the resource.
+	\item descriptor: The descriptor of the resource, it contains all the necessary informations to create it.
+	\item handle: The resource handle of the underlying rendering api
+\end{itemize}
+The descriptor also define if the resource is stateless or stateful:
+\begin{itemize}
+	\item Stateless: The resource do not contains any information other than the parameters from which it has been created. Two stateless resources created with the same parameters are identical.
+	\item Stateful: The resource contais additional information beyond the parameters from which it has been created. Two stateless resources, even if created with the same parameters, are considered different. A buffer is an example of a stateful resource: even if two buffer are of the same size, type and usage, they can contains different data, so they are considered always different.
+\end{itemize}
+If a task require the creation of stateless resource with the same descriptor of an already existing resource, it is returned as result instead of creating a new one. This means that a rendering resource can be owned by multiple tasks, and so it is shared to save memory and performance. If a task require to modify a resource owned by also other tasks, a new resource is created and such task is removed from the owners of the previous resource.
+\subsection{Commit operation}
+When a task update the descriptor of a resource, such resource (and all its children) are marked as "damaged". During the engine dispatch operation the resources, the "commit" operation is called on the resource manager. In this phase, all the damaged resources are recreated using the new descriptor. Resources are updated in topological order and, if possible, it is done in parallel. To achieve this, some thread communication is required, and for such role, watch channels are used. A watch channel is a special channel that hold just a value, allow concurrent threads to safetly write on it and get notified when such value change. For this implementation, an empty value is stored. Such channels are used to get notification of a completed operation. Before starting to create resources, the graph is preprocessed and for each resource (node), a watch channel is created and a copy is stored by associating its resource id. Before a resource is updated, the thread will wait for the watch channel of each parent to be ready, then the resource update is started. Once finished, a ready notification is sent on the channel of the current resource to allow other threads working on children resources to proceed. This synchronization mechanism allow the graph to be visited (and updated) safetly in parallel in a dataflow-like behaviour. For optimal performance and safety, threads are managed by "Tokio", a library that offer an asynchronous multithreading executor. It is important that the executor is asynchronous because if a thread, while creating a resource, blocks waiting for a parent one, such thread is able to reschedule the current operation and start working on a new one. There are situation where this mechanism is fundamental to avoid deadlocks: if there are more tasks with parents than threads, there is a chance (based on the scheduling order) that all the threads will block waiting for the creation of a parent resource at the same time, triggering a deadlock. 
+
+
+\newpage
+\section{The engine task}
+The engine task is a special task automatically added to the task manager and it is parent of all the other tasks, so that it is always executed before the others. It is responsible for the creation, destruction and manipulation of the rendering surfaces. Rendering surfaces (swapchains) are "shared resources" that can be used by any task. When a rendering surface is created, destroyed or modified, an event is emitted and shared through the "UpdateContext" structure. During the "update\_resources" phase of this task, some rendering surface processing operations are performed:
+\begin{itemize}
+	\item Prepare the rendering surface for drawing
+	\item Clean the rendering surface by applying the black color for the whole surface
+\end{itemize}
+As for the other tasks, these operations are not performed immediately, but scheduled for execution. Since this task is parent of all the other tasks, these operations always apply before other tasks operations.
+\newpage
+\section{The dispatching operation}
+The dispathing operation is composed by the following steps:
+\begin{itemize}
+	\item The task manager visit its graph using the topological order and for each task, the "update\_resources" is called to let them declare what rendering resource they want to create/destroy/manipulate. All the requests are stored in a pending batch of operations. From each task command buffers are also collected.
+	\item The pending operations are then given to the resource manager to be processed. 
+	\item Lastly, the command buffers gathered in the first step are then submitted to the gpu to be executed.
+\end{itemize}

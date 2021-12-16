@@ -1,4 +1,3 @@
-use crate::event_processing::WCompMessage;
 use crate::geometry_manager::{
     CursorRequest, KeyboardRequest, OutputRequest, SeatRequest, WCompRequest,
 };
@@ -13,7 +12,7 @@ impl WComp {
         requests
             .flat_map(|request| {
                 match request {
-                    pal::Event::Output { time, id, event } => match &event {
+                    pal::Event::Output { time: _, id, event } => match &event {
                         pal::OutputEvent::Added(_) => {
                             if self.platform.platform_type() == pal::PlatformType::Direct {
                                 self.platform
@@ -26,7 +25,7 @@ impl WComp {
                         pal::OutputEvent::Removed => Vec::new(),
                         _ => Vec::new(),
                     },
-                    pal::Event::Surface { time, id, event } => {
+                    pal::Event::Surface { time: _, id, event } => {
                         match &event {
                             pal::SurfaceEvent::Added(surface_info) => {
                                 if let pal::definitions::Surface::WGpu(surface) =
@@ -106,7 +105,7 @@ impl WComp {
                                 code,
                                 key,
                                 state,
-                                serial,
+                                serial: _,
                                 time,
                             }) => {
                                 let id = id.into();
@@ -128,15 +127,13 @@ impl WComp {
                             pal::SeatEvent::Keyboard(pal::KeyboardEvent::LayoutModified {
                                 layout: _,
                             }) => Vec::new(),
-                            pal::SeatEvent::Cursor(pal::CursorEvent::Added(info)) => {
-                                //let size = self.geometry_manager.get_cursor_size();
+                            pal::SeatEvent::Cursor(pal::CursorEvent::Added(_info)) => {
                                 let size = pal::Size2D {
                                     width: 24,
                                     height: 24,
                                 };
-                                let (position, depth) =
+                                let (position, _depth) =
                                     self.geometry_manager.get_surface_optimal_position(&size);
-                                let handle = ();
                                 let image = None;
 
                                 let id = id.into();
@@ -148,7 +145,6 @@ impl WComp {
                                     }),
                                 };
                                 vec![request]
-                                //self.messages.borrow_mut().push(WCompMessage::from(event));
                             }
                             pal::SeatEvent::Cursor(pal::CursorEvent::Removed) => {
                                 let id = id.into();
@@ -174,10 +170,32 @@ impl WComp {
                                 };
                                 vec![request]
                             }
+                            pal::SeatEvent::Cursor(pal::CursorEvent::Axis {
+                                source,
+                                direction,
+                                value,
+                            }) => {
+                                let id = id.into();
+                                let request = WCompRequest::Seat {
+                                    request: SeatRequest::Cursor(CursorRequest::Axis {
+                                        id,
+                                        time,
+                                        source,
+                                        direction,
+                                        value,
+                                    }),
+                                };
+                                vec![request]
+                            }
                             pal::SeatEvent::Cursor(pal::CursorEvent::Entered {
                                 surface_id,
-                                position,
+                                position: _,
                             }) => {
+                                /*
+                                self.platform.request(vec![pal::Request::Seat {
+                                    request: pal::SeatRequest::Cursor(pal::CursorRequest::ChangeImage(pal::CursorImage::Hidden))
+                                }]);
+                                */
                                 let id = id.into();
                                 let output_id = surface_id.into();
                                 let request = WCompRequest::Seat {
@@ -189,6 +207,11 @@ impl WComp {
                                 vec![request]
                             }
                             pal::SeatEvent::Cursor(pal::CursorEvent::Left { surface_id }) => {
+                                /*
+                                self.platform.request(vec![pal::Request::Seat {
+                                    request: pal::SeatRequest::Cursor(pal::CursorRequest::ChangeImage(pal::CursorImage::Default))
+                                }]);
+                                */
                                 let id = id.into();
                                 let output_id = surface_id.into();
                                 let request = WCompRequest::Seat {
@@ -220,7 +243,6 @@ impl WComp {
                             _ => Vec::new(),
                         }
                     }
-                    _ => Vec::new(),
                 }
             })
             .collect::<Vec<_>>()

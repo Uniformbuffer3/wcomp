@@ -19,6 +19,13 @@ pub enum CursorRequest {
         key: Option<pal::Button>,
         state: pal::State,
     },
+    Axis {
+        id: usize,
+        time: u32,
+        source: pal::AxisSource,
+        direction: pal::AxisDirection,
+        value: pal::AxisValue,
+    },
     Focus {
         id: usize,
         surface: usize,
@@ -89,9 +96,16 @@ pub enum CursorEvent {
         key: Option<pal::Button>,
         state: pal::State,
     },
+    Axis {
+        id: usize,
+        time: u32,
+        source: pal::AxisSource,
+        direction: pal::AxisDirection,
+        value: pal::AxisValue,
+    },
     Focus {
         id: usize,
-        surface: usize,
+        surface: Option<usize>,
     },
     Entered {
         id: usize,
@@ -404,6 +418,28 @@ impl SeatManager {
             .flatten()
             .into_iter()
     }
+    pub fn focus_cursor(
+        &mut self,
+        id: usize,
+        surface: Option<usize>,
+    ) -> impl Iterator<Item = SeatEvent> + Clone {
+        self.seat_mut(id)
+            .map(|seat| {
+                seat.cursor
+                    .as_mut()
+                    .map(|cursor| {
+                        if cursor.focus != surface {
+                            cursor.focus = surface;
+                            Some(SeatEvent::from(CursorEvent::Focus { id, surface }))
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten()
+            })
+            .flatten()
+            .into_iter()
+    }
     pub fn cursor_button(
         &mut self,
         id: usize,
@@ -421,6 +457,29 @@ impl SeatManager {
                         code,
                         key,
                         state,
+                    })
+                })
+            })
+            .flatten()
+            .into_iter()
+    }
+    pub fn cursor_axis(
+        &mut self,
+        id: usize,
+        time: u32,
+        source: pal::AxisSource,
+        direction: pal::AxisDirection,
+        value: pal::AxisValue,
+    ) -> impl Iterator<Item = SeatEvent> + Clone {
+        self.seat_ref(id)
+            .map(|seat| {
+                seat.cursor.as_ref().map(|_cursor| {
+                    SeatEvent::from(CursorEvent::Axis {
+                        id,
+                        time,
+                        source,
+                        direction,
+                        value,
                     })
                 })
             })

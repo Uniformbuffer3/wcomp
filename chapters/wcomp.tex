@@ -1,0 +1,192 @@
+\chapter{WComp}
+WComp is a container that it glues together the EWS, the PAL and, lastly, the Geometry manager, the core component of WComp that contains the window logic and handle the requests/events accordingly. 
+\todo Da finire qua!
+
+WComp handle the redrawing
+
+Indeed WComp only initialize its components and run the event loop, all the actual logic happen in the Geometry Manager. During the event loop, events and requests are collected from EWS and PAL, processed by the Geometry Manager and new events are produced
+
+\section{WComp event system}
+\begin{multicols}{2}
+	\vspace*{\fill}
+	{
+	\centering
+	\includegraphics[width=\columnwidth]{wcomp_events_processing.png}
+	\captionof{figure}{WComp events processing}
+	}
+	\vspace*{\fill}
+	\columnbreak
+	\vspace*{\fill}
+	The event loop is configured to listen for both events from PAL (for system events like mouse or keyboard inputs) and requests from EWS (for Wayland requests like surface resize or status change). The event loop will use the underlying fd file of both PAL and EWS to listen for new events/requests and wait without wasting cpu cycles. As soon as a write operation is done on one of the two fd files, a cycle of the event loop will be triggered. In addition to those, a cycle can be also triggered by timers used to perform some operations. Once a cycle is triggered, both platform events from PAL and Wayland requests from EWS are collected and processed to transform them into WComp requests.
+	WComp requests are then processed by the Geometry Manager and, based on the internal logic, WComp events are emitted. The new events are further postprocessed so that some additional events are produced automatically. For example a keyboard focus event will also produce an activation event that will make surface clients to change their state to "active" (this will often trigger some color change on the surface).
+	The produced WComp events are then processed again into platform events, that will be sent to PAL, and wayland requests, that will be sent to EWS.
+	\vspace*{\fill}
+\end{multicols}
+\section{WComp requests}
+\begin{itemize}
+	\item Surface: \begin{itemize}
+		\item Add: add a surface to the geometry manager. This request will cause the call of add\_surface function on the Surface manager.
+		\item Remove: remove a surface from the geometry manager. This request will cause the call of del\_surface function on the Surface manager.
+		\item Move: move a surface on the geometry manager. This request will cause the call of move\_surface function on the Surface manager.
+		\item InteractiveResizeStart: start an interactive resize for a surface on the geometry manager. This request will cause the call of interactive\_resize\_start function on the Surface manager.
+		\item InteractiveResize: perform an interactive resize step for a surface on the geometry manager. This request will cause the call of interactive\_resize function on the Surface manager.
+		\item InteractiveResizeStop: stop an interactive resize for a surface on the geometry manager. This request will cause the call of interactive\_resize\_end function on the Surface manager.
+		\item Resize: perform a direct resize of a surface on the geometry manager. This request will cause the call of `resize\_surface` function on the Surface manager.
+		\item Configuration: notify a configure operation to the geometry manager. This request will cause the call of `configure\_surface` function on the Surface manager.
+		\item AttachBuffer: attach buffer to a surface on the geometry manager. This request will cause the call of `attach\_buffer` function on the Surface manager.
+		\item DetachBuffer: detach buffer from a surface on the geometry manager. This request will cause the call of `detach\_buffer` function on the Surface manager.
+		\item Maximize: change the state of a surface on the geometry manager to maximized. This request will cause the call of `maximize\_surface` function on the Surface manager.
+		\item Unmaximize: change the state of a surface on the geometry manager to minimized. This request will cause the call of `unmaximize\_surface` function on the Surface manager.
+		\item Commit: commit a surface on the geometry manager. This request will cause the call of `commit\_surface` function on the Surface manager.
+	\end{itemize}
+	\item SeatRequest: 
+	\begin{itemize}
+		\item Added: add a seat to the seat manager
+		\item Removed: remove a seat from the seat manager
+		\item Cursor: \begin{itemize}
+			\item Added: add the cursor to a seat in the seat manager
+			\item Removed: remove the cursor from a seat in the seat manager
+			\item Moved: move the cursor of a seat in the seat manager
+			\item Button: press a button on the cursor of a seat in the seat manager
+			\item Axis: scroll an axis on cursor of a seat in the seat manager
+			\item Entered: cursor  of a seat  entered in an output
+			\item Left: cursor  of a seat  left an output
+		\end{itemize}
+		\item Keyboard: \begin{itemize}
+			\item Added: add a keyboard to a seat in the seat manager
+			\item Remvoed: remove the keyboard from a seat in the seat manager
+			\item Key: press a key on the keyboard of a seat in the seat manager
+		\end{itemize}
+	\end{itemize}
+	\item OutputRequest:\begin{itemize}
+		\item Added: add an output to the output manager
+		\item Removed: remove an output from the output manager
+		\item Resized: resize an output in the output manager
+	\end{itemize}
+\end{itemize}
+
+\section{Geometry manager}
+The geometry manager act as an interface and manage the interaction between:
+\begin{itemize}
+	\item Output manager: handle the requests related to the outputs, so 
+	\item Seat manager: handle the requests related to the seat, like keyboard and mouse
+	\item Surface manager: handle the requests related to surfaces, like resize or status change
+\end{itemize}
+
+\subsection{Output manager}
+The output manager handle all the requests related to the outputs and offer the following functions:
+\begin{itemize}
+	\item \lstinline|fn add_output(..)|: add an output to the manager
+	\item \lstinline|fn del_output(..)|: delete an output from the manager
+	\item \lstinline|fn resize_output(..)|: resize an output in the manager
+	\item \lstinline|fn relative_to_absolute(..)|: query a conversion from output relative coordinate to screen space coordinate
+	\item \lstinline|fn screen_size(..)|: query the size of the whole screen (the sum of all the outputs sizes)
+	\item \lstinline|fn get_surface_optimal_size(..)|: query the optimal size for a newely created surface
+	\item \lstinline|fn get_surface_optimal_position(..)|: query the optimal position for a newely created surface
+	\item \lstinline|fn get_output_at(..)|: query the output that contains the provided coordinate
+\end{itemize}
+\subsection{Seat manager}
+The seat manager handle all the requests related to the seats and offer the following functions:
+\begin{itemize}
+	\item \lstinline|fn add_seat(..)|: add a seat to the manager
+	\item \lstinline|fn del_seat(..)|: delete a seat from the manager
+	\item \lstinline|fn add_keyboard(..)|: add the keyboard to a specific seat
+	\item \lstinline|fn del_keyboard(..)|: delete the keyboard from the specific seat
+	\item \lstinline|fn keyboard_focus(..)|: set the provided surface as focus of the keyboard
+	\item \lstinline|fn keyboard_key(..)|: press the provided key on the keyboard
+	\item \lstinline|fn add_cursor(..)|: add the cursor to a specific seat
+	\item \lstinline|fn del_cursor(..)|: delete the cursor from a specific seat
+	\item \lstinline|fn enter_cursor(..)|: the cursor entered in the provided output
+	\item \lstinline|fn left_cursor(..)|: the cursor left the provided output
+	\item \lstinline|fn move_cursor(..)|: move the cursor to the provided position
+	\item \lstinline|fn focus_cursor(..)|: set the provided surface as focus of the cursor
+	\item \lstinline|fn cursor_button(..)|: press the provided button on the cursor
+	\item \lstinline|fn cursor_axis(..)|: scroll the provided axis on the cursor
+\end{itemize}
+\subsection{Surface manager}
+The surface manager handle all the requests related to the surfaces and offer the following functions:
+
+\begin{itemize}
+	\item \lstinline|fn get_surface_at(..)|: query the topmost surface at the provided position
+	
+	\item \lstinline|fn add_surface(..)|: add a surface to the manager. If the surface got added, the appropriate \lstinline|SurfaceEvent::Added| will be produced
+	
+	\item \lstinline|fn del_surface(..)|: delete a surface from the provided manager. If the surface got deleted, the following events will be produced: \lstinline|SurfaceEvent::Deactivated|,if the surface was activated, \lstinline|SurfaceEvent::BufferDetached|, if the surface had a buffer attached and \lstinline|SurfaceEvent::Removed|.
+	
+	\item \lstinline|fn attach_buffer(..)|: attach the provided buffer to the selected surface. If the selected surface already has a buffer, the SurfaceEvent::BufferReplaced event will be produced, \lstinline|SurfaceEvent::BufferAttached| otherwise. The position of all the children the surface has will be updated and the event \lstinline|SurfaceEvent::Moved| will be (eventually) produced for each of them.
+	
+	\item \lstinline|fn detach_buffer(..)|: detach the buffer from the selected surface. The \lstinline|SurfaceEvent::BufferDetached| will be also produced.
+	
+	\item \lstinline|fn move_surface(..)|: move the surface to the provided position. The \lstinline|SurfaceEvent::Moved| will be also produced.
+	
+	\item \lstinline|fn focus_surface(..)|: focus the selected surface, making it the topmost. None can be passed to indicate no surface is currently focused. The depth of each surface will be updated and for each surface, the \lstinline|SurfaceEvent::Moved| will be produced. If some surface is currently activated, the \lstinline|SurfaceEvent::Deactivated| will be produced for that surface. If the focused surface is not None, a \lstinline|SurfaceEvent::Activated| will be emitted for that surface.
+	
+	\item \lstinline|fn start_interactive_resize(..)|: start an interactive resize from the provided edge on the selected surface. If the selected surface is a TopLevel surface and it is not already interactively resizing, the \lstinline|SurfaceEvent::InteractiveResizeStarted| event will be produced.
+	
+	\item \lstinline|fn interactive_resize_surface(..)|: make an interactive resize of the selected surface
+	
+	\item \lstinline|fn interactive_resize_end(..)|: end an interactive resize. If the selected surface is a TopLevel surface and it is interactive resizing with the same serial (so it is the same operation), the \lstinline|SurfaceEvent::InteractiveResizeStopped| event will be produced.
+	
+	\item \lstinline|fn resize_surface(..)|: resize the selected surface to the provided size and the \lstinline|SurfaceEvent::Configuration| event will be produced.
+	
+	\item \lstinline|fn configure(..)|: configure the geometry of a surface. If the minimal size has changed, the \lstinline|SurfaceEvent::MinSize| event will be produced. If the maximum size has changed, the \lstinline|SurfaceEvent::MaxSize| event will be produced. If the inner geometry has changed, the \lstinline|SurfaceEvent::Geometry| and \lstinline|SurfaceEvent::Resized| events will be produced. If the selected surface was interactively resizing, based on the edge, a \lstinline|SurfaceEvent::Moved| event could be produced. For example shrinking the surface from the left border will move the surface on the left while reducing its size.
+	
+	\item \lstinline|fn commit_surface(..)|: commit the selected surface by producing the \lstinline|SurfaceEvent::Committed| event.
+\end{itemize}
+Surfaces are stored double-ended queue so they can be efficiently added on the top, while keeped in order. A surface store the handle coming from EWS and various information about its state like position, depth, buffer, kind and many other. It will also store as stored double-ended the list of its children surfaces. When some operations are applied to a parent surface, some operations could be applied also to the children. For example, if a parent is moved, the children surfaces are moved accordingly to respect the relative positioning.
+
+\newpage
+\section{WComp events}
+Surface events:
+\begin{itemize}
+	\item SeatEvent: 
+		\begin{itemize}
+			\item Added:,
+			\item Removed:,
+			\item Cursor: 
+				\begin{itemize}
+					\item Added:
+					\item Removed:
+					\item Moved:
+					\item Button:
+					\item Axis:
+					\item Focus:
+					\item Entered:
+					\item Left:
+				\end{itemize}
+			\item Keyboard:
+				\begin{itemize}
+					\item Added:
+					\item Removed:
+					\item Key:
+					\item Focus:
+				\end{itemize}
+		\end{itemize}
+	\item SurfaceEvent: \begin{itemize}
+		\item Added:
+		\item Removed:
+		\item Moved:
+		\item InteractiveResizeStarted:
+		\item InteractiveResizeStopped:
+		\item Resized:
+		\item Configuration:
+		\item MinSize:
+		\item MaxSize:
+		\item Geometry:
+		\item BufferAttached:
+		\item BufferReplaced:
+		\item BufferDetached:
+		\item Activated:
+		\item Deactivated:
+		\item Maximized:
+		\item Unmaximized:
+		\item Committed:
+	\end{itemize}
+	\item OutputEvent: \begin{itemize}
+		\item Added:
+		\item Removed:
+		\item Resized:
+		\item Moved:
+	\end{itemize}
+	
+\end{itemize}

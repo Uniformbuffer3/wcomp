@@ -17,11 +17,11 @@ impl MoveLogic {
 impl ews::PointerGrab for MoveLogic {
     fn motion(
         &mut self,
-        handle: &mut ews::PointerInnerHandle<'_>,
+        _handle: &mut ews::PointerInnerHandle<'_>,
         location: ews::Point<f64, ews::Logical>,
-        focus: Option<(ews::WlSurface, ews::Point<i32, ews::Logical>)>,
-        serial: ews::Serial,
-        time: u32,
+        _focus: Option<(ews::WlSurface, ews::Point<i32, ews::Logical>)>,
+        _serial: ews::Serial,
+        _time: u32,
     ) {
         self.start_data.focus.as_ref().map(|(focus, position)| {
             let id = ews::with_states(&focus, |surface_data| ews::surface_id(&surface_data))
@@ -39,10 +39,10 @@ impl ews::PointerGrab for MoveLogic {
             };
             let position = cursor_position - offset;
             let event = WCompRequest::Surface {
-                request: SurfaceRequest::Moved {
+                request: SurfaceRequest::Move {
                     id,
                     position,
-                    depth: 0,
+                    //depth: 0,
                 },
             };
             self.requests.borrow_mut().push(event.into());
@@ -60,7 +60,7 @@ impl ews::PointerGrab for MoveLogic {
             handle.unset_grab(serial, time);
         }
     }
-    fn axis(&mut self, handle: &mut ews::PointerInnerHandle<'_>, details: ews::AxisFrame) {
+    fn axis(&mut self, _handle: &mut ews::PointerInnerHandle<'_>, _details: ews::AxisFrame) {
         //println!("Axis event");
     }
     fn start_data(&self) -> &ews::GrabStartData {
