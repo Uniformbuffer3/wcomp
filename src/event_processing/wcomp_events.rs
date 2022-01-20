@@ -1,3 +1,5 @@
+//! Module containing wcomp events processing functions.
+
 use crate::geometry_manager::{
     CursorEvent, KeyboardEvent, OutputEvent, SeatEvent, SurfaceEvent, SurfaceKind, WCompEvent,
 };
@@ -6,6 +8,7 @@ use ews::Buffer;
 use screen_task::ScreenTask;
 
 impl WComp {
+    /// Process [wcomp events][WCompEvent].
     pub fn process_events(&mut self, events: impl Iterator<Item = WCompEvent>) -> bool {
         let mut redraw = false;
         events.for_each(|event| {
@@ -433,7 +436,7 @@ impl WComp {
                             .ok()
                         }
                         Some(ews::BufferType::Dma) => {
-                            //Workaround to fix driver bug that is unable to im
+                            //Workaround to fix driver bug that is unable to import a second time the same dma buffer imported in the previous cycle.
                             /*
                             handle.as_ref().user_data().get::<ews::Dmabuf>().map(|dmabuf|{
                                 let fd = dmabuf.handles().next().unwrap();
@@ -571,154 +574,4 @@ impl WComp {
         });
         redraw
     }
-    /*
-    fn process_new_surface(&mut self, surface: &ews::WlSurface) -> bool {
-        let role = ews::get_role(surface);
-        let result = ews::with_states(&surface, |surface_data| {
-            let mut redraw = false;
-            if let Some(true) = ews::surface_id(&surface_data)
-                .map(|id| self.geometry_manager.surface_ref(id).is_some())
-            {
-                return redraw;
-            }
-            if let Some(ews::BufferAssignment::NewBuffer { buffer, delta }) = &surface_data
-                .cached_state
-                .current::<ews::SurfaceAttributes>()
-                .buffer
-            {
-                let id = ews::surface_id(&surface_data).unwrap();
-                let handle = surface.clone();
-                match ews::buffer_type(&buffer) {
-                    Some(ews::BufferType::Shm) => {
-                        ews::with_buffer_contents(&buffer, |data, info| {
-                            let size = pal::Size2D::from((info.width as u32, info.height as u32));
-                            let (position, _depth) =
-                                self.geometry_manager.get_surface_optimal_position(&size);
-                            let geometry = pal::Rectangle::from((position, size));
-                            /*
-                            let inner_geometry = surface_data
-                                .cached_state
-                                .current::<ews::SurfaceCachedState>()
-                                .geometry
-                                .map(|geometry| {
-                                    let size = pal::Size2D::from((
-                                        geometry.size.w as u32,
-                                        geometry.size.h as u32,
-                                    ));
-                                    let position = pal::Position2D::from((
-                                        geometry.loc.x as i32,
-                                        geometry.loc.y as i32,
-                                    ));
-                                    pal::Rectangle::from((position, size))
-                                })
-                                .unwrap_or(geometry.clone());
-                            */
-                            let has_been_added = match role {
-                                Some("xdg_toplevel") => {
-                                    //let event = WCompRequest::Surface{serial,event: SurfaceRequest::Added{id,handle,inner_geometry,geometry}};
-                                    //self.messages.borrow_mut().push(WCompMessage::from(event));
-                                    true
-                                }
-                                _ => false,
-                            };
-                            if has_been_added {
-                                let source = crate::utils::shm_convert_format(data, info);
-                                self.wgpu_engine.task_handle_cast_mut(
-                                    &self.screen_task,
-                                    |screen_task: &mut ScreenTask| {
-                                        screen_task.create_surface(
-                                            id,
-                                            "",
-                                            source,
-                                            [geometry.position.x, geometry.position.y, 0],
-                                            geometry.size.into(),
-                                        );
-                                    },
-                                );
-                                redraw = true;
-                            }
-                        })
-                        .unwrap();
-                    }
-                    Some(ews::BufferType::Dma) => {
-                        buffer
-                            .as_ref()
-                            .user_data()
-                            .get::<ews::Dmabuf>()
-                            .map(|dmabuf| {
-                                let size = pal::Size2D::from((
-                                    dmabuf.width() as u32,
-                                    dmabuf.height() as u32,
-                                ));
-                                let (position, depth) =
-                                    self.geometry_manager.get_surface_optimal_position(&size);
-                                let geometry = pal::Rectangle::from((position, size.clone()));
-                                let inner_geometry = surface_data
-                                    .cached_state
-                                    .current::<ews::SurfaceCachedState>()
-                                    .geometry
-                                    .map(|geometry| {
-                                        let size = pal::Size2D::from((
-                                            geometry.size.w as u32,
-                                            geometry.size.h as u32,
-                                        ));
-                                        let position = pal::Position2D::from((
-                                            geometry.loc.x as i32,
-                                            geometry.loc.y as i32,
-                                        ));
-                                        pal::Rectangle::from((position, size))
-                                    })
-                                    .unwrap_or(geometry.clone());
-
-                                let has_been_added = match role {
-                                    Some("xdg_toplevel") => {
-                                        //let event = WCompRequest::Surface{serial,event: SurfaceRequest::Added{id,handle,inner_geometry,geometry}};
-                                        //self.messages.borrow_mut().push(WCompMessage::from(event));
-                                        true
-                                    }
-                                    _ => false,
-                                };
-                                if has_been_added {
-                                    let fd = dmabuf.handles().next().unwrap();
-                                    let plane_offset = dmabuf.offsets().next().unwrap() as u64;
-                                    let plane_stride = dmabuf.strides().next().unwrap() as u32;
-                                    let modifier = dmabuf.format().modifier;
-                                    let info = screen_task::DmabufInfo {
-                                        fd,
-                                        size: size.clone().into(),
-                                        modifier,
-                                        plane_offset,
-                                        plane_stride,
-                                    };
-                                    let source = screen_task::SurfaceSource::Dmabuf { info };
-                                    self.wgpu_engine.task_handle_cast_mut(
-                                        &self.screen_task,
-                                        |screen_task: &mut ScreenTask| {
-                                            screen_task.create_surface(
-                                                id,
-                                                "",
-                                                source,
-                                                [geometry.position.x, geometry.position.y, 0],
-                                                geometry.size.clone().into(),
-                                            );
-                                        },
-                                    );
-                                    redraw = true;
-                                }
-                            });
-                    }
-                    _ => (),
-                }
-            }
-            redraw
-        });
-        match result {
-            Ok(redraw) => redraw,
-            Err(err) => {
-                println!("{:#?}", err);
-                false
-            }
-        }
-    }
-    */
 }

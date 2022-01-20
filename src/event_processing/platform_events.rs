@@ -1,3 +1,5 @@
+//! Module containing platform events processing functions.
+
 use crate::geometry_manager::{
     CursorRequest, KeyboardRequest, OutputRequest, SeatRequest, WCompRequest,
 };
@@ -5,6 +7,7 @@ use crate::wcomp::WComp;
 use pal::PlatformBackend;
 
 impl WComp {
+    /// Process the [platform requests][pal::Event].
     pub(crate) fn process_platform_requests(
         &mut self,
         requests: impl Iterator<Item = pal::Event>,
@@ -16,7 +19,7 @@ impl WComp {
                         pal::OutputEvent::Added(_) => {
                             if self.platform.platform_type() == pal::PlatformType::Direct {
                                 self.platform
-                                    .request(vec![pal::definitions::Request::Surface {
+                                    .requests(vec![pal::definitions::Request::Surface {
                                         request: pal::definitions::SurfaceRequest::Create(Some(id)),
                                     }]);
                             }

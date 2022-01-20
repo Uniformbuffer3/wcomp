@@ -1,3 +1,5 @@
+//! Module containing events processing functions.
+
 mod platform_events;
 mod wayland_requests;
 mod wcomp_events;
@@ -9,6 +11,7 @@ use pal::PlatformBackend;
 use std::fmt::Debug;
 
 #[derive(Debug)]
+/// Possible messages of [WComp][WComp].
 pub enum WCompMessage {
     Platform(pal::Event),
     Wayland(ews::WaylandRequest),
@@ -31,6 +34,7 @@ impl From<geometry_manager::WCompRequest> for WCompMessage {
 }
 
 impl WComp {
+    /// Gather all the events and requests and process them.
     pub(crate) fn process_messages(&mut self) -> bool {
         let async_requests = self
             .async_requests
@@ -47,18 +51,6 @@ impl WComp {
 
         let events = self.process_requests(requests);
         let redraw = self.process_events(events);
-        /*
-                while !self.messages.borrow().is_empty(){
-                    let messages: Vec<_> = self.messages.borrow_mut().drain(..).collect();
-                    for message in messages {
-                        redraw |= match message {
-                            WCompMessage::Platform(message)=>self.process_platform_event(message),
-                            WCompMessage::Wayland(message)=>self.process_wayland_request(message),
-                            WCompMessage::Geometry(message)=>self.process_geometry_event(message)
-                        };
-                    }
-                }
-        */
         redraw
     }
 }

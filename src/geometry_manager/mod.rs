@@ -1,3 +1,5 @@
+//! [GeometryManager][GeometryManager] related structures and enumerations.
+
 mod surface_manager;
 pub use surface_manager::{
     PopupState, Surface, SurfaceEvent, SurfaceKind, SurfaceManager, SurfaceRequest,
@@ -15,9 +17,13 @@ pub use seat_manager::{
 use std::fmt::Debug;
 
 #[derive(Debug, Clone)]
+/// Possible events of WComp.
 pub enum WCompEvent {
+    /// Seat related event.
     Seat { serial: u32, event: SeatEvent },
+    /// Surface related event.
     Surface { serial: u32, event: SurfaceEvent },
+    /// Output related event.
     Output { serial: u32, event: OutputEvent },
 }
 impl WCompEvent {
@@ -55,13 +61,19 @@ impl From<(u32, OutputEvent)> for WCompEvent {
 }
 
 #[derive(Debug)]
+/// Possible requests for WComp.
 pub enum WCompRequest {
+    /// Seat related request.
     Seat { request: SeatRequest },
+    /// Surface related request.
     Surface { request: SurfaceRequest },
+    /// Output related request.
     Output { request: OutputRequest },
 }
 
 #[derive(Debug)]
+/// Manager that merge together the behaviour of
+/// the [seat manager][SeatManager], the [surface manager][SurfaceManager] and the [output manager][OutputManager].
 pub struct GeometryManager {
     seat_manager: SeatManager,
     surface_manager: SurfaceManager,
@@ -91,6 +103,7 @@ impl GeometryManager {
         self.surface_manager.get_surface_at(&position)
     }
 
+    /// Add a seat to the manager.
     pub fn add_seat(
         &mut self,
         id: usize,
@@ -104,6 +117,8 @@ impl GeometryManager {
             .map(WCompEvent::from);
         self.postprocess_events(events)
     }
+
+    /// Delete a seat to the manager.
     pub fn del_seat(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Seat removed");
         let events = self
@@ -114,6 +129,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Add the keyboard to the specified seat in the manager.
     pub fn add_keyboard(
         &mut self,
         id: usize,
@@ -129,6 +145,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Delete the keyboard from the specified seat in the manager.
     pub fn del_keyboard(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Keyboard removed");
         let events = self
@@ -139,6 +156,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Send a keypress to the keyboard of the specified seat in the manager.
     pub fn keyboard_key(
         &mut self,
         id: usize,
@@ -156,10 +174,12 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Get the cursor reference of a specific seat in the manager.
     pub fn cursor_ref(&self, id: usize) -> Option<&Cursor> {
         self.seat_manager.cursor_ref(id)
     }
 
+    /// Add the cursor to the specified seat in the manager.
     pub fn add_cursor(
         &mut self,
         id: usize,
@@ -175,6 +195,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Delete the cursor from the specified seat in the manager.
     pub fn del_cursor(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Cursor removed");
         let events = self
@@ -185,6 +206,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Send a cursor enter event to the cursor of the specified seat in the manager.
     pub fn enter_cursor(
         &mut self,
         id: usize,
@@ -204,6 +226,8 @@ impl GeometryManager {
             .map(WCompEvent::from);
         self.postprocess_events(events)
     }
+
+    /// Send a cursor left event to the cursor of the specified seat in the manager.
     pub fn left_cursor(
         &mut self,
         id: usize,
@@ -229,6 +253,8 @@ impl GeometryManager {
             self.postprocess_events(events);
         }
     */
+
+    /// Transform output relative coordinates to absolut compositor coordinates.
     pub fn relative_to_absolute(
         &self,
         output_id: usize,
@@ -238,6 +264,8 @@ impl GeometryManager {
             .relative_to_absolute(output_id, position)
     }
 
+    /// Send a cursor move event to the cursor of the specified seat in the manager.
+    /// Coordinates are trasformed from [relative to absolute][Self::relative_to_absolute].
     pub fn relative_move_cursor(
         &mut self,
         id: usize,
@@ -254,6 +282,7 @@ impl GeometryManager {
             .flatten()
     }
 
+    /// Send a cursor move event to the cursor of the specified seat in the manager.
     pub fn move_cursor(
         &mut self,
         id: usize,
@@ -267,6 +296,8 @@ impl GeometryManager {
             .map(WCompEvent::from);
         self.postprocess_events(events)
     }
+
+    /// Send a cursor button event to the cursor of the specified seat in the manager.
     pub fn cursor_button(
         &mut self,
         id: usize,
@@ -298,6 +329,8 @@ impl GeometryManager {
 
         self.postprocess_events(events)
     }
+
+    /// Send a cursor axis event to the cursor of the specified seat in the manager.
     pub fn cursor_axis(
         &mut self,
         id: usize,
@@ -315,6 +348,8 @@ impl GeometryManager {
 
         self.postprocess_events(events)
     }
+
+    /// Add an output to the manager.
     pub fn add_output(
         &mut self,
         id: usize,
@@ -329,6 +364,8 @@ impl GeometryManager {
             .map(WCompEvent::from);
         self.postprocess_events(events)
     }
+
+    /// Remove an output from the manager.
     pub fn del_output(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Output removed");
         let events = self
@@ -338,6 +375,8 @@ impl GeometryManager {
             .map(WCompEvent::from);
         self.postprocess_events(events)
     }
+
+    /// Resize an output in the manager.
     pub fn resize_output(
         &mut self,
         id: usize,
@@ -352,10 +391,12 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Get the optimal size for a new surface.
     pub fn get_surface_optimal_size(&self) -> pal::Size2D<u32> {
         self.output_manager.get_surface_optimal_size()
     }
 
+    /// Get the optimal position for a new surface.
     pub fn get_surface_optimal_position(
         &self,
         size: &pal::Size2D<u32>,
@@ -363,13 +404,17 @@ impl GeometryManager {
         (self.output_manager.get_surface_optimal_position(size), 0)
     }
 
+    /// Get the references of all the surfaces.
     pub fn surfaces_ref(&self) -> impl Iterator<Item = &Surface> {
         self.surface_manager.surfaces_ref()
     }
+
+    /// Get the reference of a specific surface.
     pub fn surface_ref(&self, id: usize) -> Option<&Surface> {
         self.surface_manager.surface_ref(id)
     }
 
+    /// Add a surface to the manager.
     pub fn add_surface(
         &mut self,
         id: usize,
@@ -386,6 +431,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Remove a surface from the manager.
     pub fn del_surface(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Surface removed");
         let events = self
@@ -396,6 +442,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Start the interactive resize of a surface in the manager.
     pub fn interactive_resize_start(
         &mut self,
         id: usize,
@@ -411,6 +458,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// End the interactive resize (previously started) of a surface in the manager.
     pub fn interactive_resize_end(
         &mut self,
         id: usize,
@@ -425,6 +473,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Resize of a surface in the manager.
     pub fn resize_surface(
         &mut self,
         id: usize,
@@ -439,6 +488,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Maximize of a surface in the manager.
     pub fn maximize_surface(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Surface {} maximized", id);
         let events = self
@@ -449,6 +499,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Unmaximize of a surface in the manager.
     pub fn unmaximize_surface(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Surface {} unmaximized", id);
         let events = self
@@ -459,6 +510,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Perform a interactive resize step of a surface in the manager.
     pub fn interactive_resize_surface(
         &mut self,
         id: usize,
@@ -474,6 +526,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Change the configuration of a surface in the manager.
     pub fn configure_surface(
         &mut self,
         id: usize,
@@ -490,6 +543,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Move a surface in the manager.
     pub fn move_surface(
         &mut self,
         id: usize,
@@ -504,6 +558,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Attach a buffer to a surface in the manager.
     pub fn attach_buffer(
         &mut self,
         id: usize,
@@ -520,6 +575,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Detach a buffer from a surface in the manager.
     pub fn detach_buffer(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target:"WComp","Geometry manager | Buffer detached");
         let events = self
@@ -530,6 +586,7 @@ impl GeometryManager {
         self.postprocess_events(events)
     }
 
+    /// Commit a surface in the manager.
     pub fn commit_surface(&mut self, id: usize) -> impl Iterator<Item = WCompEvent> + Clone {
         log::info!(target: "WComp","Geometry manager | Committed surface: {}",id);
         let events = self

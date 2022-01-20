@@ -1,3 +1,5 @@
+//! Module containing wcomp requests processing functions.
+
 use crate::geometry_manager::{
     CursorRequest, KeyboardRequest, OutputRequest, SeatRequest, SurfaceRequest, WCompEvent,
     WCompRequest,
@@ -5,6 +7,7 @@ use crate::geometry_manager::{
 use crate::wcomp::WComp;
 
 impl WComp {
+    /// Process [wcomp requests][WCompRequest].
     pub fn process_requests(
         &mut self,
         requests: impl IntoIterator<Item = WCompRequest>,

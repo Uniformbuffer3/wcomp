@@ -1,8 +1,11 @@
+//! Module containing wayland events processing functions.
+
 use crate::geometry_manager::{PopupState, SurfaceKind, SurfaceRequest, WCompRequest};
 use crate::wcomp::WComp;
 use ews::Buffer;
 
 impl WComp {
+    /// Process the [Wayland requests][ews::WaylandRequest].
     pub(crate) fn process_wayland_requests(
         &mut self,
         requests: impl Iterator<Item = ews::WaylandRequest>,

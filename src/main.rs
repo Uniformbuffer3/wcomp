@@ -1,12 +1,13 @@
-mod event_processing;
-mod geometry_manager;
-mod move_logic;
-mod resize_logic;
-mod utils;
-mod wcomp;
+pub mod event_processing;
+pub mod geometry_manager;
+pub mod move_logic;
+pub mod resize_logic;
+pub mod utils;
+pub mod wcomp;
 
 use crate::wcomp::WComp;
 
+/// Main function of the project.
 fn main() {
     env_logger::init();
 

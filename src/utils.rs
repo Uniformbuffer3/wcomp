@@ -1,3 +1,6 @@
+//! Module containing some utility functions.
+
+/// Convert shm format to vulkan format.
 pub fn shm_to_vulkan_format(shm_format: ews::ShmFormat) -> Option<screen_task::TextureFormat> {
     match shm_format {
         ews::ShmFormat::Rgba8888 => Some(screen_task::TextureFormat::Rgba8Snorm),
@@ -5,6 +8,7 @@ pub fn shm_to_vulkan_format(shm_format: ews::ShmFormat) -> Option<screen_task::T
     }
 }
 
+/// Converts shm data to [SurfaceSource][screen_task::SurfaceSource].
 pub fn shm_convert_format(data: &[u8], info: ews::BufferData) -> screen_task::SurfaceSource {
     let data = &data[info.offset as usize..(info.offset + info.height * info.stride) as usize];
     match info.format {

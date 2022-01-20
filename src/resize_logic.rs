@@ -1,7 +1,10 @@
+//! Structures and enumerations related to the surface resize logic.
+
 use crate::geometry_manager::{SurfaceRequest, WCompRequest};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Surface resize logic.
 pub struct ResizeLogic {
     start_data: ews::GrabStartData,
     requests: Rc<RefCell<Vec<WCompRequest>>>,

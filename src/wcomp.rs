@@ -1,3 +1,5 @@
+//! Module containing the main structure [WComp][WComp].
+
 use crate::geometry_manager::*;
 use pal::PlatformBackend;
 use screen_task::ScreenTask;
@@ -5,6 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wgpu_engine::*;
 
+/// Core structure of the crate that makes possible to launch the compositor.
 pub struct WComp {
     pub(crate) timer: std::time::Instant,
     pub(crate) redraw_timer: std::time::Instant,
@@ -33,7 +36,7 @@ impl WComp {
 
         let mut platform = pal::Platform::new(vec![Box::new(wgpu_engine.wgpu_context())]);
         if platform.platform_type() == pal::PlatformType::Compositor {
-            platform.request(vec![
+            platform.requests(vec![
                 pal::Request::Surface {
                     request: pal::SurfaceRequest::Create(None),
                 },

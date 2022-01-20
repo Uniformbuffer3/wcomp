@@ -1,7 +1,10 @@
+//! [SurfaceManager][SurfaceManager] related structures and enumerations.
+
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible surface requests.
 pub enum SurfaceRequest {
     Add {
         id: usize,
@@ -60,6 +63,7 @@ pub enum SurfaceRequest {
 }
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible surface events.
 pub enum SurfaceEvent {
     Added {
         id: usize,
@@ -135,6 +139,7 @@ pub enum SurfaceEvent {
 }
 
 #[derive(Debug, Clone)]
+/// Representation of the possible altered states.
 pub struct AlteredState {
     original: pal::Rectangle<i32, u32>,
     minimized: bool,
@@ -213,6 +218,7 @@ impl AlteredState {
 }
 
 #[derive(Debug, Clone, Default)]
+/// Surface state related data.
 pub struct SurfaceState {
     altered_state: Option<AlteredState>,
 }
@@ -301,6 +307,7 @@ impl SurfaceState {
 }
 
 #[derive(Debug, Clone)]
+/// Popup state related data.
 pub struct PopupState {
     pub anchor: pal::Rectangle<i32, u32>,
     pub anchor_edges: ews::Anchor,
@@ -311,6 +318,7 @@ pub struct PopupState {
 }
 
 #[derive(Debug, Clone)]
+/// All the possible surface kinds.
 pub enum SurfaceKind {
     Toplevel {
         handle: ews::ToplevelSurface,
@@ -343,6 +351,7 @@ impl From<ews::ToplevelSurface> for SurfaceKind {
 }
 
 #[derive(Debug, Clone)]
+/// Representation of a surface buffer.
 pub struct Buffer {
     handle: ews::WlBuffer,
     geometry: pal::Rectangle<i32, u32>,
@@ -375,6 +384,7 @@ impl Buffer {
 }
 
 #[derive(Debug, Clone)]
+/// Representation of a surface.
 pub struct Surface {
     id: usize,
     kind: SurfaceKind,
@@ -956,6 +966,7 @@ impl PartialEq for Surface {
 impl Eq for Surface {}
 
 #[derive(Debug)]
+/// Component responsible to handle the surfaces.
 pub struct SurfaceManager {
     cursor_surfaces: VecDeque<Surface>,
     surfaces: VecDeque<Surface>,

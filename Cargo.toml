@@ -12,8 +12,8 @@ libc = "*"
 async-trait = "*"
 ews = {package="embedded_wayland_server",path="../embeddable_wayland_server"}
 pal = {git="https://github.com/Uniformbuffer3/platform_abstraction_layer"}
-wgpu_engine = {path="../wgpu_engine"}
-screen_task = {path="../screen_task"}
+wgpu_engine = {git="https://github.com/Uniformbuffer3/wgpu_engine"}
+screen_task = {git="https://github.com/Uniformbuffer3/screen_task"}
 env_logger = "*"
 log = "*"
 calloop = "*"
@@ -23,26 +23,29 @@ bitflags = "*"
 lazy_static = "*"
 xcursor = "*"
 
-[patch."https://github.com/Uniformbuffer3/platform_abstraction_layer.git"]
-pal = { path = "../pal"}
-
-[patch."https://github.com/Uniformbuffer3/wgpu_engine"]
-wgpu_engine = { path = "../wgpu_engine" }
-
-[patch."https://github.com/Uniformbuffer3/wgpu.git"]
-wgpu_custom = { path = "../wgpu/wgpu" ,package="wgpu"}
-
 #[patch."https://github.com/Smithay/smithay"]
 #smithay = { path = "../smithay"}
 
-[patch."https://github.com/Uniformbuffer3/gfx"]
-gfx-hal = { path = "../gfx/src/hal" }
-gfx-backend-empty = { path = "../gfx/src/backend/empty" }
-gfx-backend-vulkan = { path = "../gfx/src/backend/vulkan" }
-gfx-backend-gl = { path = "../gfx/src/backend/gl" }
-gfx-backend-dx12 = { path = "../gfx/src/backend/dx12" }
-gfx-backend-dx11 = { path = "../gfx/src/backend/dx11" }
-gfx-backend-metal = { path = "../gfx/src/backend/metal" }
 
-[patch."https://github.com/Uniformbuffer3/keystroke_decoder.git"]
-keystroke_decoder = { path = "../keystroke_decoder"}
+
+
+#[patch."https://github.com/Uniformbuffer3/platform_abstraction_layer.git"]
+#pal = { path = "../pal"}
+
+#[patch."https://github.com/Uniformbuffer3/wgpu_engine"]
+#wgpu_engine = { path = "../wgpu_engine" }
+
+#[patch."https://github.com/Uniformbuffer3/wgpu.git"]
+#wgpu_custom = { path = "../wgpu/wgpu" ,package="wgpu"}
+
+#[patch."https://github.com/Uniformbuffer3/gfx"]
+#gfx-hal = { path = "../gfx/src/hal" }
+#gfx-backend-empty = { path = "../gfx/src/backend/empty" }
+#gfx-backend-vulkan = { path = "../gfx/src/backend/vulkan" }
+#gfx-backend-gl = { path = "../gfx/src/backend/gl" }
+#gfx-backend-dx12 = { path = "../gfx/src/backend/dx12" }
+#gfx-backend-dx11 = { path = "../gfx/src/backend/dx11" }
+#gfx-backend-metal = { path = "../gfx/src/backend/metal" }
+
+#[patch."https://github.com/Uniformbuffer3/keystroke_decoder.git"]
+#keystroke_decoder = { path = "../keystroke_decoder"}

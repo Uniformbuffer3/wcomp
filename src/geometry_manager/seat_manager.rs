@@ -1,4 +1,7 @@
+//! [SeatManager][SeatManager] related structures and enumerations.
+
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible cursor requests.
 pub enum CursorRequest {
     Added {
         id: usize,
@@ -41,6 +44,7 @@ pub enum CursorRequest {
 }
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible keyboard requests.
 pub enum KeyboardRequest {
     Added {
         id: usize,
@@ -63,6 +67,7 @@ pub enum KeyboardRequest {
 }
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible seat requests.
 pub enum SeatRequest {
     Added { id: usize, name: String },
     Removed { id: usize },
@@ -76,6 +81,7 @@ impl From<CursorRequest> for SeatRequest {
 }
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible cursor events.
 pub enum CursorEvent {
     Added {
         id: usize,
@@ -118,6 +124,7 @@ pub enum CursorEvent {
 }
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible keyboard events.
 pub enum KeyboardEvent {
     Added {
         id: usize,
@@ -141,6 +148,7 @@ pub enum KeyboardEvent {
 }
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible seat events.
 pub enum SeatEvent {
     Added { id: usize, name: String },
     Removed { id: usize },
@@ -154,6 +162,7 @@ impl From<CursorEvent> for SeatEvent {
 }
 
 #[derive(Debug, Clone)]
+/// Representation of a cursor.
 pub struct Cursor {
     position: pal::Position2D<i32>,
     focus: Option<usize>,
@@ -173,6 +182,7 @@ impl Cursor {
 }
 
 #[derive(Debug, Clone)]
+/// Representation of a keyboard.
 pub struct Keyboard {
     focus: Option<usize>,
     rate: i32,
@@ -180,6 +190,7 @@ pub struct Keyboard {
 }
 
 #[derive(Debug, Clone)]
+/// Representation of a seat.
 pub struct Seat {
     id: usize,
     name: String,
@@ -188,6 +199,7 @@ pub struct Seat {
 }
 
 #[derive(Debug)]
+/// Component responsible to handle the seats.
 pub struct SeatManager {
     seats: Vec<Seat>,
 }
@@ -396,7 +408,7 @@ impl SeatManager {
             else{None}
         }).flatten().into_iter()
         */
-        vec![SeatEvent::from(CursorEvent::Entered {
+        vec![SeatEvent::from(CursorEvent::Left {
             id,
             output_id: output_id,
         })]

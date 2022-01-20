@@ -1,6 +1,9 @@
+//! [OutputManager][OutputManager] related structures and enumerations.
+
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible output requests.
 pub enum OutputRequest {
     Added {
         id: usize,
@@ -21,6 +24,7 @@ pub enum OutputRequest {
 }
 
 #[derive(Debug, Clone)]
+/// Enumerator containing all the possible output events.
 pub enum OutputEvent {
     Added {
         id: usize,
@@ -41,6 +45,7 @@ pub enum OutputEvent {
 }
 
 #[derive(Debug, Clone)]
+/// Representation of an output.
 pub struct Output {
     pub id: usize,
     pub geometry: pal::Rectangle<i32, u32>,
@@ -53,6 +58,7 @@ impl Output {
 }
 
 #[derive(Debug)]
+/// Component responsible to handle the outputs.
 pub struct OutputManager {
     outputs: Vec<Output>,
 }
@@ -90,11 +96,16 @@ impl OutputManager {
             .map(|position| {
                 self.outputs.remove(position);
                 position..self.outputs.len()
-            })
+            });
+        indexes_to_update.map(|range|{
+            std::iter::once(OutputEvent::Removed { id })
+            .chain(self.update_offset(range))
+        }).into_iter().flatten()
+        /*
             .get_or_insert(0..0)
             .clone();
-
-        self.update_offset(indexes_to_update)
+        std::iter::once()
+        */
     }
     pub fn resize_output(
         &mut self,
